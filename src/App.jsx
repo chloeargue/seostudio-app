@@ -1,23 +1,15 @@
 import { useState } from "react";
 import "./App.css";
 
-// Appel API Mistral (clé cachée dans Vercel)
+// Appel via le backend Vercel (évite les problèmes CORS)
 const callMistral = async (prompt) => {
-  const key = import.meta.env.VITE_MISTRAL_KEY;
-  const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
+  const res = await fetch("/api/generate", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model: "mistral-small-latest",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1200,
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
   });
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  return data.text || "";
 };
 
 const NAV = [
