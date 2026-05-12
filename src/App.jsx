@@ -1,13 +1,23 @@
 import { useState } from "react";
 import "./App.css";
 
-const callClaude = async (prompt) => {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+// Appel API Mistral (clé cachée dans Vercel)
+const callMistral = async (prompt) => {
+  const key = import.meta.env.VITE_MISTRAL_KEY;
+  const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model: "mistral-small-latest",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 1200,
+    }),
   });
-  return (await res.json()).content?.[0]?.text || "";
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
 };
 
 const NAV = [
@@ -81,6 +91,8 @@ export default function App() {
   const [auditSector, setAuditSector] = useState("");
   const [auditing, setAuditing] = useState(false);
   const [auditResult, setAuditResult] = useState(null);
+  const [auditError, setAuditError] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const currentMonthIdx = new Date().getMonth();
   const currentSeason = seasons.find(s => currentMonthIdx >= s.start && currentMonthIdx <= s.end);
@@ -92,24 +104,39 @@ export default function App() {
     setGenerating(true); setGenResult(null);
     const sc = currentSeason ? `Période: ${currentSeason.label}. Focus: ${currentSeason.focus}.` : "";
     const prompts = {
-      article: `Expert SEO français. Client: ${client.name} (${client.sector}, ${client.location}). Audience: ${client.audience||"clients locaux"}. ${sc} Mot-clé: "${genKw}". Génère:\n# [H1 optimisé]\nMETA TITLE: [60 car]\nMETA DESCRIPTION: [155 car]\n## Introduction\n[2 phrases]\n## [H2 principal]\n[80 mots]\n## [H2 secondaire]\n[80 mots]\n## Conclusion\n[CTA]\nMOTS-CLÉS SECONDAIRES: [5]\nBALISES HN: [liste]`,
-      meta: `Expert SEO français. Client: ${client.name} (${client.sector}). ${sc} Mot-clé: "${genKw}". Génère:\nMETA TITLE (60 car): [titre]\nMETA DESCRIPTION (155 car): [desc]\nH1: [titre]\nH1 ALTERNATIF: [variante]\nURL SLUG: [slug]\nMOTS-CLÉS LSI: [5 variantes]`,
-      keywords: `Expert SEO français. Client: ${client.name} (${client.sector}, ${client.location}). ${sc} Thème: "${genKw}". Génère:\nMOTS-CLÉS PRINCIPAUX: liste 6\nLONGUE TRAÎNE: liste 8\nQUESTIONS FAQ: liste 5\nMOTS-CLÉS LOCAUX: liste 4\nSAISONNIERS: liste 4`,
+      article: `Tu es un expert SEO français. Client: ${client.name} (${client.sector}, ${client.location}). Audience: ${client.audience||"clients locaux"}. ${sc} Mot-clé cible: "${genKw}". Génère un article de blog SEO complet:\n# [Titre H1 optimisé]\nMETA TITLE: [60 car max]\nMETA DESCRIPTION: [155 car max]\n## Introduction\n[2 phrases percutantes]\n## [H2 principal]\n[80 mots]\n## [H2 secondaire]\n[80 mots]\n## Conclusion\n[CTA clair]\nMOTS-CLÉS SECONDAIRES: [liste 5]\nBALISES HN SUGGÉRÉES: [liste H2/H3]`,
+      meta: `Tu es un expert SEO français. Client: ${client.name} (${client.sector}). ${sc} Mot-clé: "${genKw}". Génère UNIQUEMENT:\nMETA TITLE (60 car max): [titre]\nMETA DESCRIPTION (155 car max): [desc]\nH1: [titre page]\nH1 ALTERNATIF: [variante]\nURL SLUG: [slug]\nMOTS-CLÉS LSI: [5 variantes sémantiques]`,
+      keywords: `Tu es un expert SEO français. Client: ${client.name} (${client.sector}, ${client.location}). ${sc} Thème: "${genKw}". Génère:\nMOTS-CLÉS PRINCIPAUX (fort volume): liste 6\nLONGUE TRAÎNE (intention précise): liste 8\nQUESTIONS FAQ (featured snippets): liste 5\nMOTS-CLÉS LOCAUX: liste 4\nMOTS-CLÉS SAISONNIERS: liste 4`,
     };
-    try { const r = await callClaude(prompts[genType]); setGenResult(r); } finally { setGenerating(false); }
+    try {
+      const r = await callMistral(prompts[genType]);
+      setGenResult(r);
+    } catch(e) {
+      setGenResult("❌ Erreur de génération. Vérifie ta connexion.");
+    } finally { setGenerating(false); }
   };
 
   const runAudit = async () => {
     if (!auditUrl) return;
-    setAuditing(true); setAuditResult(null);
+    setAuditing(true); setAuditResult(null); setAuditError(null);
     try {
-      const r = await callClaude(`Expert SEO. Audit pour "${auditUrl}" secteur "${auditSector||client.sector}". JSON uniquement sans backticks:\n{"score_global":72,"scores":{"technique":68,"contenu":75,"mots_cles":60,"mobile":85,"vitesse":70,"local":65},"points_forts":["Point 1","Point 2","Point 3"],"problemes":[{"titre":"P1","impact":"Fort","action":"Action"},{"titre":"P2","impact":"Moyen","action":"Action"},{"titre":"P3","impact":"Faible","action":"Action"}],"opportunites":["O1","O2","O3"],"verdict":"2 phrases."}`);
-      try { setAuditResult(JSON.parse(r)); } catch { setAuditResult({ error:true }); }
+      const r = await callMistral(`Tu es un expert SEO. Génère un audit SEO réaliste pour le site "${auditUrl}" dans le secteur "${auditSector||client.sector}". Réponds UNIQUEMENT avec du JSON valide, sans texte avant ou après, sans backticks:\n{"score_global":72,"scores":{"technique":68,"contenu":75,"mots_cles":60,"mobile":85,"vitesse":70,"local":65},"points_forts":["Point fort 1","Point fort 2","Point fort 3"],"problemes":[{"titre":"Problème 1","impact":"Fort","action":"Action corrective concrète"},{"titre":"Problème 2","impact":"Moyen","action":"Action corrective"},{"titre":"Problème 3","impact":"Faible","action":"Action corrective"}],"opportunites":["Opportunité 1","Opportunité 2","Opportunité 3"],"verdict":"Verdict en 2 phrases max."}`);
+      const cleaned = r.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      setAuditResult(parsed);
+    } catch(e) {
+      setAuditError("❌ Erreur lors de l'audit. Réessaie dans quelques secondes.");
     } finally { setAuditing(false); }
   };
 
   const sc = (s) => s >= 70 ? "#16a34a" : s >= 50 ? "#d97706" : "#dc2626";
   const sl = (s) => s >= 70 ? "Bon" : s >= 50 ? "À améliorer" : "Critique";
+
+  const copyResult = () => {
+    navigator.clipboard.writeText(genResult);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div style={{ display:"flex", height:"100vh", fontFamily:"system-ui,-apple-system,sans-serif", background:"#f9fafb" }}>
@@ -123,15 +150,15 @@ export default function App() {
           <p style={{ fontSize:10, color:"#9ca3af", margin:"0 0 4px" }}>{client.sector} · {client.location}</p>
           <button onClick={() => { setClient(null); setGenResult(null); setAuditResult(null); setTracking([]); setSeasons([]); }} style={{ fontSize:10, color:"#6b7280", background:"none", border:"none", cursor:"pointer", padding:0, textDecoration:"underline" }}>Changer de client</button>
         </div>
-        {currentSeason && <div style={{ marginBottom:"1rem", padding:"8px 10px", background:"#f0fdf4", borderRadius:8, border:"1px solid #bbf7d0" }}><p style={{ fontSize:9, color:"#6b7280", marginBottom:2 }}>PÉRIODE ACTIVE</p><p style={{ fontSize:11, fontWeight:600, color:"#15803d" }}>{currentSeason.icon} {currentSeason.label}</p></div>}
+        {currentSeason && <div style={{ marginBottom:"1rem", padding:"8px 10px", background:"#f0fdf4", borderRadius:8, border:"1px solid #bbf7d0" }}><p style={{ fontSize:9, color:"#6b7280", marginBottom:2, textTransform:"uppercase" }}>PÉRIODE ACTIVE</p><p style={{ fontSize:11, fontWeight:600, color:"#15803d" }}>{currentSeason.icon} {currentSeason.label}</p></div>}
         {NAV.map(({ id, icon, label }) => (
           <button key={id} onClick={() => setPage(id)} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:8, border:"none", background:page===id?"#f0fdf4":"none", color:page===id?"#15803d":"#4b5563", fontSize:12, fontWeight:page===id?600:400, cursor:"pointer", marginBottom:2, textAlign:"left", width:"100%" }}>
             {icon} {label}
           </button>
         ))}
         <div style={{ marginTop:"auto", padding:"10px", background:"#f0fdf4", borderRadius:8 }}>
-          <p style={{ fontSize:10, color:"#15803d", fontWeight:600, margin:"0 0 1px" }}>✓ GSC + GA4</p>
-          <p style={{ fontSize:10, color:"#16a34a", margin:0 }}>Prêts à connecter</p>
+          <p style={{ fontSize:10, color:"#15803d", fontWeight:600, margin:"0 0 1px" }}>✓ IA Mistral active</p>
+          <p style={{ fontSize:10, color:"#16a34a", margin:0 }}>Génération prête</p>
         </div>
       </div>
 
@@ -201,15 +228,21 @@ export default function App() {
                   <p style={{ fontSize:10, color:"#9ca3af", marginBottom:6, textTransform:"uppercase" }}>Suggestions {currentSeason.label}</p>
                   {currentSeason.focus.split(",").slice(0,3).map(kw => <button key={kw} onClick={() => setGenKw(kw.trim())} style={{ display:"block", width:"100%", textAlign:"left", fontSize:11, padding:"5px 8px", marginBottom:4, borderRadius:6, border:"1px solid #e5e7eb", background:"#f9fafb", cursor:"pointer" }}>+ {kw.trim()}</button>)}
                 </div>}
+                <div style={{ marginBottom:12, padding:"8px", background:"#f0fdf4", borderRadius:8 }}>
+                  <p style={{ fontSize:10, color:"#15803d", fontWeight:600 }}>✓ IA Mistral active</p>
+                  <p style={{ fontSize:10, color:"#16a34a", margin:0 }}>Génération gratuite</p>
+                </div>
                 <button onClick={generateContent} disabled={generating||!genKw} style={{ marginTop:"auto", width:"100%", padding:"10px", borderRadius:8, border:"none", background:generating||!genKw?"#d1d5db":"#16a34a", color:"#fff", fontWeight:600, fontSize:13, cursor:generating||!genKw?"default":"pointer" }}>
-                  {generating ? "⏳ Génération..." : "✨ Générer"}
+                  {generating ? "⏳ Génération en cours..." : "✨ Générer"}
                 </button>
               </div>
               <div style={{ background:"#fff", borderRadius:12, border:"1px solid #e5e7eb", padding:"1.25rem", overflowY:"auto" }}>
-                {!genResult && !generating && <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:300, gap:8, color:"#9ca3af" }}><span style={{ fontSize:40 }}>📄</span><p>Saisis un mot-clé et génère</p></div>}
-                {generating && <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:300, gap:12 }}><div style={{ width:40, height:40, border:"3px solid #bbf7d0", borderTop:"3px solid #16a34a", borderRadius:"50%", animation:"spin 1s linear infinite" }} /><p style={{ fontSize:13, color:"#6b7280" }}>Génération pour {client.name}...</p></div>}
+                {!genResult && !generating && <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:300, gap:8, color:"#9ca3af" }}><span style={{ fontSize:40 }}>📄</span><p>Saisis un mot-clé et génère ton contenu</p></div>}
+                {generating && <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:300, gap:12 }}><div style={{ width:40, height:40, border:"3px solid #bbf7d0", borderTop:"3px solid #16a34a", borderRadius:"50%", animation:"spin 1s linear infinite" }} /><p style={{ fontSize:13, color:"#6b7280" }}>Génération IA pour {client.name}...</p></div>}
                 {genResult && !generating && <div>
-                  <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}><button onClick={() => navigator.clipboard.writeText(genResult)} style={{ fontSize:11, color:"#6b7280", background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:6, padding:"4px 10px", cursor:"pointer" }}>📋 Copier tout</button></div>
+                  <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+                    <button onClick={copyResult} style={{ fontSize:11, color:"#6b7280", background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:6, padding:"4px 10px", cursor:"pointer" }}>{copied ? "✅ Copié !" : "📋 Copier tout"}</button>
+                  </div>
                   <div style={{ fontSize:13, lineHeight:1.8, color:"#374151" }}>
                     {genResult.split("\n").map((line,i) => {
                       if (line.startsWith("## ")) return <h3 key={i} style={{ fontSize:15, fontWeight:600, borderLeft:"3px solid #16a34a", paddingLeft:10, margin:"14px 0 6px" }}>{line.replace("## ","")}</h3>;
@@ -239,7 +272,7 @@ export default function App() {
               {!seasons.length && !showAddSeason && <div style={{ background:"#fff", borderRadius:12, border:"1px solid #e5e7eb", padding:"2.5rem", textAlign:"center" }}>
                 <p style={{ fontSize:32, marginBottom:8 }}>📅</p>
                 <p style={{ fontSize:14, fontWeight:600, marginBottom:4 }}>Aucune période définie</p>
-                <p style={{ fontSize:13, color:"#6b7280", marginBottom:16 }}>Ex: Haute saison, Été, Rentrée scolaire...</p>
+                <p style={{ fontSize:13, color:"#6b7280", marginBottom:16 }}>Ex: Haute saison Jan-Mar, Nettoyage Jun-Aoû...</p>
                 <button onClick={() => setShowAddSeason(true)} style={{ fontSize:13, color:"#fff", background:"#16a34a", border:"none", borderRadius:8, padding:"9px 18px", cursor:"pointer", fontWeight:600 }}>+ Créer ma première période</button>
               </div>}
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
@@ -277,7 +310,7 @@ export default function App() {
                   <div style={{ flex:1 }}><label style={{ fontSize:10, color:"#9ca3af", display:"block", marginBottom:3 }}>Icône</label><select value={newSeason.icon} onChange={e => setNewSeason(p => ({...p,icon:e.target.value}))} style={{ width:"100%", fontSize:12, padding:"6px", borderRadius:6, border:"1px solid #d1d5db" }}>{["🌿","☀️","🍂","❄️","✂️","🌸","🏠","🔨","🚿","🌊","⭐","🎯"].map(ic => <option key={ic} value={ic}>{ic}</option>)}</select></div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  <button onClick={() => { if(newSeason.label&&newSeason.focus){setSeasons(p=>[...p,{...newSeason,id:Date.now()}]);setNewSeason({label:"",start:0,end:1,focus:"",color:"#16a34a",icon:"🌿"});setShowAddSeason(false); }}} style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"#16a34a", color:"#fff", fontWeight:600, fontSize:12, cursor:"pointer" }}>Ajouter</button>
+                  <button onClick={() => { if(newSeason.label&&newSeason.focus){setSeasons(p=>[...p,{...newSeason,id:Date.now()}]);setNewSeason({label:"",start:0,end:1,focus:"",color:"#16a34a",icon:"🌿"});setShowAddSeason(false);}}} style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"#16a34a", color:"#fff", fontWeight:600, fontSize:12, cursor:"pointer" }}>Ajouter</button>
                   <button onClick={() => setShowAddSeason(false)} style={{ flex:1, padding:"8px", borderRadius:8, border:"1px solid #e5e7eb", background:"#fff", color:"#4b5563", fontSize:12, cursor:"pointer" }}>Annuler</button>
                 </div>
               </div>}
@@ -321,14 +354,15 @@ export default function App() {
                 <p style={{ fontSize:12, color:"#6b7280", marginBottom:14 }}>Entre l'URL d'un site — diagnostic complet en 30 secondes. Idéal pour convaincre un prospect.</p>
                 <div style={{ display:"flex", gap:8 }}>
                   <input value={auditUrl} onChange={e => setAuditUrl(e.target.value)} placeholder="https://www.monsite.fr" style={{ flex:2, fontSize:12, padding:"8px 12px", borderRadius:8, border:"1px solid #d1d5db" }} />
-                  <input value={auditSector} onChange={e => setAuditSector(e.target.value)} placeholder="Secteur" style={{ flex:1, fontSize:12, padding:"8px 12px", borderRadius:8, border:"1px solid #d1d5db" }} />
-                  <button onClick={runAudit} disabled={auditing||!auditUrl} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:auditing||!auditUrl?"#d1d5db":"#16a34a", color:"#fff", fontWeight:600, fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}>{auditing?"⏳ Analyse...":"🔍 Lancer"}</button>
+                  <input value={auditSector} onChange={e => setAuditSector(e.target.value)} placeholder="Secteur (ex: plomberie)" style={{ flex:1, fontSize:12, padding:"8px 12px", borderRadius:8, border:"1px solid #d1d5db" }} />
+                  <button onClick={runAudit} disabled={auditing||!auditUrl} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:auditing||!auditUrl?"#d1d5db":"#16a34a", color:"#fff", fontWeight:600, fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}>{auditing?"⏳ Analyse...":"🔍 Lancer l'audit"}</button>
                 </div>
+                {auditError && <p style={{ fontSize:12, color:"#dc2626", marginTop:8 }}>{auditError}</p>}
               </div>
               {auditResult && !auditResult.error && <div>
                 <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:16, background:"#fff", borderRadius:12, border:"1px solid #e5e7eb", padding:"1.25rem" }}>
                   <ScoreCircle score={auditResult.score_global} />
-                  <div><p style={{ fontSize:15, fontWeight:700, margin:"0 0 4px" }}>Score SEO — {sl(auditResult.score_global)}</p><p style={{ fontSize:12, color:"#6b7280", margin:0, lineHeight:1.6 }}>{auditResult.verdict}</p></div>
+                  <div><p style={{ fontSize:15, fontWeight:700, margin:"0 0 4px" }}>Score SEO global — {sl(auditResult.score_global)}</p><p style={{ fontSize:12, color:"#6b7280", margin:0, lineHeight:1.6 }}>{auditResult.verdict}</p></div>
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:16 }}>
                   {Object.entries(auditResult.scores).map(([k,v]) => <div key={k} style={{ background:"#fff", borderRadius:10, padding:"1rem", border:"1px solid #e5e7eb" }}><p style={{ fontSize:10, color:"#6b7280", marginBottom:4, textTransform:"capitalize" }}>{k.replace("_"," ")}</p><p style={{ fontSize:20, fontWeight:700, color:sc(v), margin:"0 0 6px" }}>{v}</p><div style={{ height:4, background:"#f3f4f6", borderRadius:2 }}><div style={{ height:"100%", width:`${v}%`, background:sc(v), borderRadius:2 }} /></div></div>)}
