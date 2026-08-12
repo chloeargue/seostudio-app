@@ -293,6 +293,29 @@ export default function App() {
       localStorage.setItem('seos_wp_url', base);
       localStorage.setItem('seos_wp_user', wpUser);
       localStorage.setItem('seos_wp_pass', wpPass);
+
+      // Sauvegarde côté serveur (Supabase) — nécessaire pour que le futur CRON
+      // puisse retrouver ce site sans navigateur ouvert.
+      try {
+        await fetch('/api/sites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'save',
+            user_id: user.id,
+            site: {
+              name: client?.name || '',
+              sector: client?.sector || '',
+              location: client?.location || '',
+              wp_url: base,
+              wp_user: wpUser,
+              wp_pass: wpPass,
+            }
+          })
+        });
+      } catch (saveErr) {
+        console.error('Erreur sauvegarde site (non bloquant):', saveErr);
+      }
     } catch(e) { setWpError("❌ " + e.message + " — Vérifie l'URL et les identifiants"); }
     setWpLoading(false);
   };
