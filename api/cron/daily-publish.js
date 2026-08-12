@@ -1,4 +1,4 @@
-mport { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import { publishPost } from "../_lib/wp.js";
 
 const supabase = createClient(
