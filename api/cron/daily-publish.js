@@ -178,3 +178,4 @@ export default async function handler(req, res) {
     debug_due_count: dueSchedules?.length,
     debug_first_schedule: dueSchedules?.[0],
   });
+}
