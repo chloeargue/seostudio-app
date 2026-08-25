@@ -83,7 +83,7 @@ JSON à retourner:
     body: JSON.stringify({
       model: "mistral-small-latest",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 2500,
+      max_tokens: 4000,
     }),
   });
   const data = await response.json();
