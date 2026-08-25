@@ -172,5 +172,9 @@ export default async function handler(req, res) {
     }
   }
 
-  return res.status(200).json({ processed: results.length, results });
-}
+  return res.status(200).json({
+    processed: results.length,
+    results,
+    debug_due_count: dueSchedules?.length,
+    debug_first_schedule: dueSchedules?.[0],
+  });
