@@ -49,7 +49,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "mistral-small-latest",
         messages: [{ role: "user", content: enrichedPrompt }],
-        max_tokens: 2500,
+        max_tokens: 4000,
       }),
     });
 
