@@ -46,8 +46,8 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.VITE_MISTRAL_KEY}`,
       },
-      body: JSON.stringify({
-        model: req.body.model || "mistral-small-latest",
+          body: JSON.stringify({
+        model: req.body.model || "ministral-14b-2512",
         messages: [{ role: "user", content: enrichedPrompt }],
         max_tokens: 4000,
       }),
