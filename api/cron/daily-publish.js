@@ -81,7 +81,7 @@ JSON à retourner:
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.VITE_MISTRAL_KEY}` },
     body: JSON.stringify({
-      model: "mistral-small-latest",
+     model: "ministral-14b-2512",,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 4000,
     }),
