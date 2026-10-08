@@ -47,7 +47,7 @@ export default async function handler(req, res) {
         "Authorization": `Bearer ${process.env.VITE_MISTRAL_KEY}`,
       },
       body: JSON.stringify({
-        model: req.body.model || "ministral-14b-2512",
+        model: req.body.model || "ministral-8b-2512",
         messages: [{ role: "user", content: enrichedPrompt }],
         max_tokens: 4000,
         ...(/json/i.test(prompt) ? { response_format: { type: "json_object" } } : {}),
