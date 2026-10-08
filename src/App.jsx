@@ -63,6 +63,30 @@ function ScoreCircle({ score }) {
   return <div style={{ width:72, height:72, borderRadius:"50%", border:`4px solid ${color}`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", flexShrink:0 }}><span style={{ fontSize:22, fontWeight:700, color }}>{score}</span><span style={{ fontSize:9, color:"#9ca3af" }}>/100</span></div>;
 }
 
+// Parse tolérant d'un JSON produit par un LLM :
+// - retire les ```json
+// - échappe les retours ligne / tabulations bruts à l'intérieur des chaînes
+function safeParseJson(raw) {
+  const t = String(raw || "").replace(/```json|```/g, "").trim();
+  try { return JSON.parse(t); } catch (e) {}
+  let out = "", inStr = false, esc = false;
+  for (const ch of t) {
+    if (inStr) {
+      if (esc) { out += ch; esc = false; continue; }
+      if (ch === "\\") { out += ch; esc = true; continue; }
+      if (ch === '"') { inStr = false; out += ch; continue; }
+      if (ch === "\n") { out += "\\n"; continue; }
+      if (ch === "\r") { out += "\\r"; continue; }
+      if (ch === "\t") { out += "\\t"; continue; }
+      out += ch;
+    } else {
+      if (ch === '"') inStr = true;
+      out += ch;
+    }
+  }
+  return JSON.parse(out);
+}
+
 function AuthScreen({ onLogin }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -248,14 +272,6 @@ export default function App() {
         } else {
           setTimeout(() => loadGSCSites(savedToken), 500);
         }
-        // Charger Analytics automatiquement
-        const savedGAProp = localStorage.getItem('seos_ga_property');
-        if (savedGAProp) {
-          setGaProperty(savedGAProp);
-          setTimeout(() => loadGAData(savedToken, savedGAProp), 700);
-        } else {
-          setTimeout(() => loadGAProperties(savedToken), 700);
-        }
       }
     } catch(e) { console.error('Session restore error:', e); }
   }, []);
@@ -293,29 +309,6 @@ export default function App() {
       localStorage.setItem('seos_wp_url', base);
       localStorage.setItem('seos_wp_user', wpUser);
       localStorage.setItem('seos_wp_pass', wpPass);
-
-      // Sauvegarde côté serveur (Supabase) — nécessaire pour que le futur CRON
-      // puisse retrouver ce site sans navigateur ouvert.
-      try {
-        await fetch('/api/sites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'save',
-            user_id: user.id,
-            site: {
-              name: client?.name || '',
-              sector: client?.sector || '',
-              location: client?.location || '',
-              wp_url: base,
-              wp_user: wpUser,
-              wp_pass: wpPass,
-            }
-          })
-        });
-      } catch (saveErr) {
-        console.error('Erreur sauvegarde site (non bloquant):', saveErr);
-      }
     } catch(e) { setWpError("❌ " + e.message + " — Vérifie l'URL et les identifiants"); }
     setWpLoading(false);
   };
@@ -359,9 +352,9 @@ JSON: {"h1_optimise":"nouveau H1 max 70 car","h2_suggestions":["H2 1","H2 2","H2
 
       console.log('R1 raw:', r1.text);
       console.log('R2 raw:', r2.text);
-      const metaData = JSON.parse(r1.text.replace(/```json|```/g, '').trim());
+      const metaData = safeParseJson(r1.text);
       let contentData = {};
-      try { contentData = JSON.parse(r2.text.replace(/```json|```/g, '').trim()); } catch(e) { console.error('Content parse error:', e); }
+      try { contentData = safeParseJson(r2.text); } catch(e) { console.error('Content parse error:', e); }
       const meta = { ...metaData, ...contentData };
       console.log('Final meta:', meta);
 
@@ -501,7 +494,7 @@ JSON à retourner:
         body: JSON.stringify({ prompt, keyword: blogKw, sector: client.sector, location: client.location })
       });
       const d = await r.json();
-      const result = JSON.parse(d.text.replace(/```json|```/g, '').trim());
+      const result = safeParseJson(d.text);
       setBlogResult(result);
     } catch(e) {
       console.error('Blog generation error:', e);
@@ -598,7 +591,7 @@ Réponds UNIQUEMENT avec ce JSON sans backticks:
       
       let aiKws = [];
       try {
-        const parsed = JSON.parse(d.text.replace(/```json|```/g, '').trim());
+        const parsed = safeParseJson(d.text);
         aiKws = parsed.keywords || [];
       } catch(e) { console.error('KW parse error:', e); }
 
@@ -689,7 +682,7 @@ Génère UNIQUEMENT ce JSON valide sans backticks, avec EXACTEMENT ${texts.lengt
         body: JSON.stringify({ prompt })
       });
       const d = await r.json();
-      const optimized = JSON.parse(d.text.replace(/```json|```/g, '').trim());
+      const optimized = safeParseJson(d.text);
 
       // Sécurité : vérifier que le nombre de sections/faq correspond
       if (optimized.sections?.length !== texts.length) {
@@ -817,7 +810,7 @@ IMAGES PEXELS: [3 requêtes en anglais]`,
     setAuditing(true); setAuditResult(null); setAuditError(null);
     try {
       const r = await callMistral(`Expert SEO. Audit pour "${auditUrl}" secteur "${auditSector||client.sector}". JSON uniquement sans backticks:\n{"score_global":72,"scores":{"technique":68,"contenu":75,"mots_cles":60,"mobile":85,"vitesse":70,"local":65},"points_forts":["P1","P2","P3"],"problemes":[{"titre":"P1","impact":"Fort","action":"Action"},{"titre":"P2","impact":"Moyen","action":"Action"},{"titre":"P3","impact":"Faible","action":"Action"}],"opportunites":["O1","O2","O3"],"verdict":"2 phrases."}`);
-      setAuditResult(JSON.parse(r.replace(/```json|```/g, "").trim()));
+      setAuditResult(safeParseJson(r));
     } catch { setAuditError("❌ Erreur lors de l'audit. Réessaie."); } finally { setAuditing(false); }
   };
 

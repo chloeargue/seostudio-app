@@ -46,16 +46,17 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.VITE_MISTRAL_KEY}`,
       },
-          body: JSON.stringify({
+      body: JSON.stringify({
         model: req.body.model || "ministral-14b-2512",
         messages: [{ role: "user", content: enrichedPrompt }],
         max_tokens: 4000,
+        ...(/json/i.test(prompt) ? { response_format: { type: "json_object" } } : {}),
       }),
     });
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content || "";
-    res.status(200).json({ text, mistral_error: text ? undefined : data });;
+    res.status(200).json({ text, mistral_error: text ? undefined : data });
 
   } catch (error) {
     console.error(error);

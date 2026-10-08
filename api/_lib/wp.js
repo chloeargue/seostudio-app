@@ -28,7 +28,9 @@ export async function publishPost({ wp_url, wp_user, wp_pass, title, slug, conte
     }),
   });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || "Erreur publication WordPress");
+  const raw = await res.text();
+  let data = {};
+  try { data = JSON.parse(raw); } catch (e) {}
+  if (!res.ok) throw new Error(`WP ${res.status} ${data.code || ""} ${data.message || raw.slice(0, 200)}`.trim());
   return { url: data.link, id: data.id };
 }

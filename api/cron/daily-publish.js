@@ -6,6 +6,30 @@ const supabase = createClient(
   process.env.VITE_SUPABASE_ANON_KEY
 );
 
+// Parse tolérant d'un JSON produit par un LLM :
+// - retire les ```json
+// - échappe les retours ligne / tabulations bruts à l'intérieur des chaînes
+function safeParseJson(raw) {
+  const t = String(raw || "").replace(/```json|```/g, "").trim();
+  try { return JSON.parse(t); } catch (e) {}
+  let out = "", inStr = false, esc = false;
+  for (const ch of t) {
+    if (inStr) {
+      if (esc) { out += ch; esc = false; continue; }
+      if (ch === "\\") { out += ch; esc = true; continue; }
+      if (ch === '"') { inStr = false; out += ch; continue; }
+      if (ch === "\n") { out += "\\n"; continue; }
+      if (ch === "\r") { out += "\\r"; continue; }
+      if (ch === "\t") { out += "\\t"; continue; }
+      out += ch;
+    } else {
+      if (ch === '"') inStr = true;
+      out += ch;
+    }
+  }
+  return JSON.parse(out);
+}
+
 function computeNextRun(frequency, from = new Date()) {
   const d = new Date(from);
   if (frequency === "weekly") d.setDate(d.getDate() + 7);
@@ -81,14 +105,15 @@ JSON à retourner:
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.VITE_MISTRAL_KEY}` },
     body: JSON.stringify({
-     model: "ministral-14b-2512",,
+      model: "ministral-14b-2512",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 4000,
+      response_format: { type: "json_object" },
     }),
   });
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content || "";
-  return JSON.parse(text.replace(/```json|```/g, "").trim());
+  return safeParseJson(text);
 }
 
 export default async function handler(req, res) {
@@ -172,12 +197,8 @@ export default async function handler(req, res) {
     }
   }
 
-    }
-
   return res.status(200).json({
     processed: results.length,
     results,
-    debug_due_count: dueSchedules?.length,
-    debug_first_schedule: dueSchedules?.[0],
   });
 }
