@@ -44,6 +44,7 @@ function computeNextRun(frequency, from = new Date()) {
 async function findKeyword(sector, geoZone, siteId) {
   const searchRes = await fetch("https://google.serper.dev/search", {
     method: "POST",
+    signal: AbortSignal.timeout(20000),
     headers: {
       "Content-Type": "application/json",
       "X-API-KEY": process.env.VITE_SERPER_KEY,
@@ -73,6 +74,7 @@ async function generateArticle({ keyword, sector, location, siteUrl, lang = "fr"
   if (process.env.VITE_SERPER_KEY) {
     const searchRes = await fetch("https://google.serper.dev/search", {
       method: "POST",
+    signal: AbortSignal.timeout(20000),
       headers: { "Content-Type": "application/json", "X-API-KEY": process.env.VITE_SERPER_KEY },
       body: JSON.stringify({
         q: `${keyword} ${location} ${lang === "en" ? "statistics data figures" : "statistiques données chiffres"}`,
@@ -112,10 +114,12 @@ export default async function handler(req, res) {
   if (error) return res.status(500).json({ error: error.message });
 
   const results = [];
+  const t0 = Date.now();
 
   for (const schedule of dueSchedules || []) {
     const site = schedule.client_sites;
     if (!site) continue;
+    if (Date.now() - t0 > 60000) break; // évite de dépasser la limite de 300 s de Vercel
 
     try {
       const keyword = await findKeyword(
