@@ -17,7 +17,7 @@ export function pickProvider() {
   return "mistral";
 }
 
-export async function callAI(prompt, { json = false, maxTokens = 6000 } = {}) {
+async function callAIOnce(prompt, { json = false, maxTokens = 6000 } = {}) {
   const provider = pickProvider();
   const model = process.env.AI_MODEL || DEFAULT_MODELS[provider];
   let res, data, text = "";
@@ -66,4 +66,19 @@ export async function callAI(prompt, { json = false, maxTokens = 6000 } = {}) {
     throw err;
   }
   return { text, provider, model };
+}
+
+// Relance automatique si le fournisseur est surchargé (429 / 500 / 503)
+export async function callAI(prompt, opts = {}) {
+  let lastErr;
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await callAIOnce(prompt, opts);
+    } catch (e) {
+      lastErr = e;
+      if (!/"code":\s*(429|500|503)|UNAVAILABLE|overloaded|rate/i.test(String(e.message))) throw e;
+      await new Promise((r) => setTimeout(r, 4000 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }
