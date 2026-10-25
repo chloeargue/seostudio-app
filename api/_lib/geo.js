@@ -1,0 +1,111 @@
+// api/_lib/geo.js — règles GEO (Generative Engine Optimization) centralisées.
+// Dossier _lib : pas une route API. Utilisé par le cron (et réutilisable par generate.js).
+
+const RULES = {
+  fr: `RÈGLES GEO (optimisation pour ChatGPT, Perplexity, Gemini, Claude, AI Overviews) — OBLIGATOIRES :
+1. RÉPONSE D'ABORD : la réponse directe à la question du mot-clé apparaît dans les 100 premiers mots.
+2. ENCART DE SYNTHÈSE (champ "tldr") : 2 à 4 phrases autonomes (définition, critères, chiffres clés), lisibles sans le reste de la page.
+3. TITRES = QUESTIONS : le H1 et au moins la moitié des H2 sont formulés comme de vraies questions que se posent les gens.
+4. PARAGRAPHES AUTONOMES : chaque paragraphe se comprend sans lire le précédent (pas de "comme vu plus haut", "cela"). 100 à 200 mots maximum par paragraphe.
+5. SECTIONS (H2) de 300 à 500 mots, structurées ainsi : phrase de réponse directe, développement, preuve (donnée/exemple/source), conclusion actionnable.
+6. FORMATS EXTRACTIBLES : au moins 1 liste numérotée ou à puces ET 1 tableau HTML comparatif (<table>) quand le sujet s'y prête.
+7. DENSITÉ FACTUELLE : remplace toute affirmation vague ("très efficace", "le meilleur") par un fait attribuable (chiffre + source + date). N'INVENTE JAMAIS un chiffre, une étude, un témoignage ou une source : n'utilise que les DONNÉES RÉELLES fournies ci-dessous ; sinon reste qualitatif et honnête.
+8. SOURCES : cite les sources fournies avec leur nom dans le texte (ex. "selon <nom de la source>").
+9. FRAÎCHEUR : mentionne la date de mise à jour fournie ("Mis à jour en <mois année>"). N'écris aucune autre année de mémoire.
+10. AUTORITÉ (E-E-A-T) : si un auteur est fourni, ajoute une ligne "Par <auteur>, <expertise>" en début d'article. Sinon, n'invente aucun auteur, aucune expérience, aucune année d'expérience.
+11. TERRITOIRE SÉMANTIQUE (query fan-out) : couvre au moins 4 sous-questions voisines du sujet (comparaison, prix, erreurs courantes, cas local, etc.), une par H2.
+12. FAQ : 3 à 5 questions/réponses courtes (réponse en 1 à 3 phrases) dans le champ "faq".
+13. MAILLAGE : au moins 1 lien interne vers le site, avec une ancre descriptive.
+14. TON : factuel, précis, utile ; pas de remplissage ni de formules creuses. Pas de markdown, HTML propre uniquement.`,
+  en: `GEO RULES (optimisation for ChatGPT, Perplexity, Gemini, Claude, AI Overviews) — MANDATORY:
+1. ANSWER FIRST: the direct answer to the keyword's question appears within the first 100 words.
+2. SUMMARY BOX (field "tldr"): 2 to 4 self-contained sentences (definition, criteria, key figures), readable without the rest of the page.
+3. QUESTION HEADINGS: the H1 and at least half of the H2s are phrased as real questions people ask.
+4. SELF-CONTAINED PARAGRAPHS: every paragraph is understandable without the previous one (no "as seen above", "this"). 100 to 200 words max per paragraph.
+5. SECTIONS (H2) of 300 to 500 words: direct answer sentence, development, proof (data/example/source), actionable conclusion.
+6. EXTRACTABLE FORMATS: at least 1 numbered or bulleted list AND 1 comparison HTML table (<table>) when the topic fits.
+7. FACTUAL DENSITY: replace vague claims ("very effective", "the best") with attributable facts (figure + source + date). NEVER invent a figure, study, testimonial or source: only use the REAL DATA provided below; otherwise stay qualitative and honest.
+8. SOURCES: name the provided sources in the text (e.g. "according to <source name>").
+9. FRESHNESS: mention the provided update date ("Updated <month year>"). Write no other year from memory.
+10. AUTHORITY (E-E-A-T): if an author is provided, add a "By <author>, <expertise>" line at the top. Otherwise invent no author, experience or years of experience.
+11. SEMANTIC TERRITORY (query fan-out): cover at least 4 neighbouring sub-questions (comparison, pricing, common mistakes, local case, etc.), one per H2.
+12. FAQ: 3 to 5 short Q&As (1 to 3 sentence answers) in the "faq" field.
+13. INTERNAL LINKING: at least 1 internal link to the site with a descriptive anchor.
+14. TONE: factual, precise, useful; no filler. No markdown, clean HTML only.`,
+};
+
+const monthYear = (lang, d = new Date()) =>
+  d.toLocaleDateString(lang === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric" });
+
+export function geoArticlePrompt({ keyword, sector, location, siteUrl, lang = "fr", author, realData = "" }) {
+  const en = lang === "en";
+  const today = monthYear(lang);
+  const authorLine = author?.name
+    ? `${en ? "Author" : "Auteur"}: ${author.name}${author.expertise ? ", " + author.expertise : ""}`
+    : en ? "Author: none provided (do not invent one)" : "Auteur: aucun fourni (n'en invente pas)";
+  const lengthRule = en
+    ? "contenu_html: 1500 to 2500 words, internal anchors descriptive"
+    : "contenu_html : 1500 à 2500 mots, ancres internes descriptives";
+
+  return `${en ? "You are an expert SEO/GEO copywriter. Write in English." : "Tu es un expert SEO/GEO et rédacteur web professionnel. Rédige en français."}
+Site: ${siteUrl} | ${en ? "Sector" : "Secteur"}: ${sector} | ${en ? "Location" : "Ville"}: ${location}
+${en ? "Main keyword" : "Mot-clé principal"}: "${keyword}"
+${authorLine}
+${en ? "Update date to display" : "Date de mise à jour à afficher"}: ${today}
+
+${en ? "Return ONLY valid JSON, no backticks, no markdown." : "Retourne UNIQUEMENT un JSON valide, sans backticks ni markdown."}
+${en ? "IMPORTANT: inside JSON strings, write HTML on a single line (no raw line breaks)." : "IMPORTANT : dans les chaînes JSON, écris le HTML sur une seule ligne (aucun retour à la ligne brut)."}
+
+${en ? "SEO RULES" : "RÈGLES SEO"}:
+- "${keyword}" ${en ? "must appear in: title, meta_title, meta_description, first paragraph, at least 2 H2, at least 4 times in the content" : "doit apparaître dans : titre, meta_title, meta_description, premier paragraphe, au moins 2 H2, au moins 4 fois dans le contenu"}
+- meta_title: ${en ? "STRICTLY 60 characters max" : "STRICTEMENT 60 caractères max"}
+- meta_description: ${en ? "STRICTLY 150 characters max, ends with a CTA" : "STRICTEMENT 150 caractères max, finit par un CTA"}
+- ${lengthRule}
+- ${en ? "At least 1 internal link, e.g." : "Au moins 1 lien interne, ex :"} <a href="${siteUrl}/contact">${en ? "Contact us" : "Contactez-nous"}</a>
+
+${RULES[lang] || RULES.fr}
+
+${en ? "JSON to return" : "JSON à retourner"}:
+{"titre":"","slug":"","meta_title":"","meta_description":"","extrait":"","tldr":"","contenu_html":"","faq":[{"q":"","a":""}]}${realData}`;
+}
+
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// Assemble le HTML final : synthèse en tête + contenu + FAQ
+export function assembleHtml(article, lang = "fr") {
+  const en = lang === "en";
+  const tldr = article.tldr
+    ? `<div class="geo-tldr"><p><strong>${en ? "In short" : "En bref"} :</strong> ${esc(article.tldr)}</p></div>\n`
+    : "";
+  const faq = Array.isArray(article.faq) && article.faq.length
+    ? `\n<h2>${en ? "Frequently asked questions" : "Questions fréquentes"}</h2>\n` +
+      article.faq.map((f) => `<h3>${esc(f.q)}</h3>\n<p>${esc(f.a)}</p>`).join("\n")
+    : "";
+  return tldr + (article.contenu_html || "") + faq;
+}
+
+// Score GEO heuristique (0-100) + détail des critères
+export function scoreGeo(article, keyword = "") {
+  const html = assembleHtml(article);
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const words = text.split(" ").filter(Boolean);
+  const kw = keyword.toLowerCase();
+  const first100 = words.slice(0, 100).join(" ").toLowerCase();
+  const h2 = [...html.matchAll(/<h2[^>]*>(.*?)<\/h2>/gis)].map((m) => m[1].replace(/<[^>]+>/g, ""));
+  const paras = [...html.matchAll(/<p[^>]*>(.*?)<\/p>/gis)].map((m) => m[1].replace(/<[^>]+>/g, "").split(/\s+/).filter(Boolean).length);
+  const checks = {
+    reponse_100_premiers_mots: !!kw && first100.includes(kw),
+    encart_synthese: !!article.tldr,
+    h2_en_questions: h2.length > 0 && h2.filter((t) => t.includes("?")).length >= Math.ceil(h2.length / 2),
+    au_moins_4_h2: h2.length >= 4,
+    liste: /<(ul|ol)\b/i.test(html),
+    tableau: /<table\b/i.test(html),
+    paragraphes_max_200_mots: paras.length > 0 && Math.max(...paras) <= 200,
+    faq_3_a_5: Array.isArray(article.faq) && article.faq.length >= 3 && article.faq.length <= 5,
+    donnees_chiffrees: (text.match(/\d+[\d\s.,]*\s?(%|€|euros?|ans|mois|jours)/gi) || []).length >= 2,
+    lien_interne: /<a\s[^>]*href=/i.test(html),
+    longueur_1500_3000: words.length >= 1500 && words.length <= 3000,
+  };
+  const ok = Object.values(checks).filter(Boolean).length;
+  return { score: Math.round((ok / Object.keys(checks).length) * 100), words: words.length, checks };
+}
