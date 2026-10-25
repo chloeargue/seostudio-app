@@ -53,8 +53,6 @@ ${en ? "Main keyword" : "Mot-clé principal"}: "${keyword}"
 ${authorLine}
 ${en ? "Update date to display" : "Date de mise à jour à afficher"}: ${today}
 
-${en ? "Return ONLY valid JSON, no backticks, no markdown." : "Retourne UNIQUEMENT un JSON valide, sans backticks ni markdown."}
-${en ? "IMPORTANT: inside JSON strings, write HTML on a single line (no raw line breaks)." : "IMPORTANT : dans les chaînes JSON, écris le HTML sur une seule ligne (aucun retour à la ligne brut)."}
 
 ${en ? "SEO RULES" : "RÈGLES SEO"}:
 - "${keyword}" ${en ? "must appear in: title, meta_title, meta_description, first paragraph, at least 2 H2, at least 4 times in the content" : "doit apparaître dans : titre, meta_title, meta_description, premier paragraphe, au moins 2 H2, au moins 4 fois dans le contenu"}
@@ -65,8 +63,19 @@ ${en ? "SEO RULES" : "RÈGLES SEO"}:
 
 ${RULES[lang] || RULES.fr}
 
-${en ? "JSON to return" : "JSON à retourner"}:
-{"titre":"","slug":"","meta_title":"","meta_description":"","extrait":"","tldr":"","contenu_html":"","faq":[{"q":"","a":""}]}${realData}`;
+${en ? "OUTPUT FORMAT (NOT JSON). Write exactly these tags, each alone on its own line, followed by its content. No markdown, no backticks." : "FORMAT DE SORTIE (PAS DE JSON). Écris exactement ces balises, chacune seule sur sa ligne, suivies de leur contenu. Pas de markdown, pas de backticks."}
+[TITRE]
+[SLUG]
+[META_TITLE]
+[META_DESCRIPTION]
+[EXTRAIT]
+[TLDR]
+[CONTENU_HTML]
+[FAQ]
+Q: ${en ? "question" : "question"}
+A: ${en ? "answer" : "réponse"}
+[FIN]
+${realData}`;
 }
 
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -108,4 +117,36 @@ export function scoreGeo(article, keyword = "") {
   };
   const ok = Object.values(checks).filter(Boolean).length;
   return { score: Math.round((ok / Object.keys(checks).length) * 100), words: words.length, checks };
+}
+
+// Lit la sortie à balises ([TITRE] ... [FIN]) sans passer par du JSON.
+export function parseGeoOutput(raw) {
+  const text = String(raw || "").replace(/```[a-z]*/gi, "").replace(/\r/g, "");
+  if (!/\[FIN\]/.test(text)) throw new Error("Réponse IA tronquée (balise [FIN] absente) : article trop long pour le modèle");
+  const tags = ["TITRE", "SLUG", "META_TITLE", "META_DESCRIPTION", "EXTRAIT", "TLDR", "CONTENU_HTML", "FAQ"];
+  const parts = {};
+  const re = /^\s*\[(TITRE|SLUG|META_TITLE|META_DESCRIPTION|EXTRAIT|TLDR|CONTENU_HTML|FAQ|FIN)\]\s*$/gm;
+  let m, last = null, lastEnd = 0;
+  while ((m = re.exec(text))) {
+    if (last) parts[last] = text.slice(lastEnd, m.index).trim();
+    last = m[1]; lastEnd = re.lastIndex;
+  }
+  for (const t of ["TITRE", "SLUG", "CONTENU_HTML"]) {
+    if (!parts[t]) throw new Error(`Réponse IA incomplète : balise [${t}] vide ou absente`);
+  }
+  const faq = [];
+  const fre = /Q:\s*(.+?)\s*\n\s*A:\s*([\s\S]*?)(?=\n\s*Q:|$)/g;
+  let f;
+  while ((f = fre.exec(parts.FAQ || ""))) faq.push({ q: f[1].trim(), a: f[2].trim() });
+  const one = (s) => (s || "").replace(/\s+/g, " ").trim();
+  return {
+    titre: one(parts.TITRE),
+    slug: one(parts.SLUG).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, ""),
+    meta_title: one(parts.META_TITLE),
+    meta_description: one(parts.META_DESCRIPTION),
+    extrait: one(parts.EXTRAIT),
+    tldr: one(parts.TLDR),
+    contenu_html: parts.CONTENU_HTML,
+    faq,
+  };
 }
