@@ -31,6 +31,17 @@ export async function publishPost({ wp_url, wp_user, wp_pass, title, slug, conte
   const raw = await res.text();
   let data = {};
   try { data = JSON.parse(raw); } catch (e) {}
-  if (!res.ok) throw new Error(`WP ${res.status} ${data.code || ""} ${data.message || raw.slice(0, 200)}`.trim());
+  if (!res.ok) {
+    let who = "";
+    if (res.status === 401 || res.status === 403) {
+      try {
+        const me = await fetch(`${base}/wp-json/wp/v2/users/me?context=edit`, { headers: { Authorization: `Basic ${creds}` } });
+        const meData = await me.json().catch(() => ({}));
+        who = ` | users/me: HTTP ${me.status}` + (me.ok ? ` user=${meData.slug} roles=${(meData.roles || []).join(",")}` : ` ${meData.code || ""}`);
+        who += ` | user_saisi="${wp_user}" mdp_longueur=${String(wp_pass || "").length}`;
+      } catch (e) { who = " | users/me: injoignable"; }
+    }
+    throw new Error(`WP ${res.status} ${data.code || ""} ${data.message || raw.slice(0, 200)}${who}`.trim());
+  }
   return { url: data.link, id: data.id };
 }
