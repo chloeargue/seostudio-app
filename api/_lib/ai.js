@@ -4,7 +4,7 @@
 // AI_MODEL (optionnel) force le nom du modèle.
 
 const DEFAULT_MODELS = {
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3.8-flash",
   mistral: "ministral-8b-2512",
   claude: "claude-haiku-5-5",
 };
