@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { publishPost } from "../_lib/wp.js";
+import { geoArticlePrompt, assembleHtml, scoreGeo } from "../_lib/geo.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -66,53 +67,42 @@ async function findKeyword(sector, geoZone, siteId) {
 }
 
 // Génère l'article complet via Mistral (même logique que api/generate.js)
-async function generateArticle({ keyword, sector, location, siteUrl }) {
+async function generateArticle({ keyword, sector, location, siteUrl, lang = "fr", author }) {
   let realData = "";
   if (process.env.VITE_SERPER_KEY) {
     const searchRes = await fetch("https://google.serper.dev/search", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-KEY": process.env.VITE_SERPER_KEY },
       body: JSON.stringify({
-        q: `${keyword} ${location} statistiques données chiffres`,
-        gl: "fr",
-        hl: "fr",
+        q: `${keyword} ${location} ${lang === "en" ? "statistics data figures" : "statistiques données chiffres"}`,
+        gl: lang === "en" ? "us" : "fr",
+        hl: lang === "en" ? "en" : "fr",
         num: 5,
       }),
     });
     const searchData = await searchRes.json();
     const snippets = searchData.organic?.slice(0, 4).map((r) => `- ${r.title}: ${r.snippet}`).join("\n") || "";
-    if (snippets) realData = `\n\nDONNÉES RÉELLES TROUVÉES SUR GOOGLE (cite les sources):\n${snippets}\n`;
+    if (snippets) realData = `\n\n${lang === "en" ? "REAL DATA FROM GOOGLE (cite the sources)" : "DONNÉES RÉELLES TROUVÉES SUR GOOGLE (cite les sources)"}:\n${snippets}\n`;
   }
 
-  const prompt = `Tu es un expert SEO français et rédacteur web professionnel.
-Site: ${siteUrl} | Secteur: ${sector} | Ville: ${location}
-Mot-clé principal: "${keyword}"
+  const prompt = geoArticlePrompt({ keyword, sector, location, siteUrl, lang, author, realData });
 
-Génère UNIQUEMENT ce JSON valide sans backticks ni markdown.
-
-RÈGLES SEO STRICTES:
-- Le mot-clé "${keyword}" DOIT apparaître dans: titre, meta_title, meta_description, premier paragraphe, au moins 2 H2, au moins 4 fois dans le contenu
-- meta_title: STRICTEMENT 60 caractères max, contient "${keyword}"
-- meta_description: STRICTEMENT 150 caractères max, contient "${keyword}", finit par un CTA
-- contenu_html: minimum 900 mots, pas de markdown
-- Inclure au moins 1 lien interne (ex: <a href="${siteUrl}/contact">Contactez-nous</a>)
-- N'écrire JAMAIS d'année spécifique
-
-JSON à retourner:
-{"titre":"[H1 max 70 car]","slug":"[slug-optimise]","meta_title":"[max 60 car]","meta_description":"[max 150 car]","extrait":"[25 mots]","contenu_html":"[HTML complet avec H2, paragraphes, liens]"}${realData}`;
-
-  const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.VITE_MISTRAL_KEY}` },
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+  },
     body: JSON.stringify({
-      model: "ministral-8b-2512",
+      model: process.env.AI_MODEL || "claude-haiku-5-5",
+      max_tokens: 8000,
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 4000,
-      response_format: { type: "json_object" },
-    }),
+  }),
   });
   const data = await response.json();
-  const text = data.choices?.[0]?.message?.content || "";
+  const text = data.content?.[0]?.text || "";
+  if (!text) throw new Error("IA: " + JSON.stringify(data).slice(0, 300));
   return safeParseJson(text);
 }
 
@@ -153,7 +143,12 @@ export default async function handler(req, res) {
         sector: schedule.sector || site.sector,
         location: schedule.geo_zone || site.location,
         siteUrl: site.wp_url,
+        lang: schedule.lang || site.lang || "fr",
+        author: site.author_name ? { name: site.author_name, expertise: site.author_expertise } : null,
       });
+      const lang = schedule.lang || site.lang || "fr";
+      const html = assembleHtml(article, lang);
+      const geo = scoreGeo(article, keyword);
 
       const published = await publishPost({
         wp_url: site.wp_url,
@@ -161,7 +156,7 @@ export default async function handler(req, res) {
         wp_pass: site.wp_pass,
         title: article.titre,
         slug: article.slug,
-        content: article.contenu_html,
+        content: html,
         excerpt: article.extrait,
         meta: { meta_title: article.meta_title, meta_description: article.meta_description },
         keyword,
@@ -173,8 +168,8 @@ export default async function handler(req, res) {
         keyword,
         status: "published",
         title: article.titre,
-        content: article.contenu_html,
-        meta: { meta_title: article.meta_title, meta_description: article.meta_description },
+        content: html,
+        meta: { meta_title: article.meta_title, meta_description: article.meta_description, geo_score: geo.score, geo_checks: geo.checks, words: geo.words, lang },
         scheduled_for: new Date().toISOString().split("T")[0],
         wp_post_id: String(published.id),
       });
@@ -184,7 +179,7 @@ export default async function handler(req, res) {
         .update({ last_run_at: now, next_run_at: computeNextRun(schedule.frequency) })
         .eq("id", schedule.id);
 
-      results.push({ schedule_id: schedule.id, status: "success", keyword, wp_post_id: published.id });
+      results.push({ schedule_id: schedule.id, status: "success", keyword, geo_score: geo.score, wp_post_id: published.id });
     } catch (err) {
       await supabase.from("content_queue").insert({
         schedule_id: schedule.id,
@@ -199,6 +194,9 @@ export default async function handler(req, res) {
 
   return res.status(200).json({
     processed: results.length,
+    results,
+  });
+}
     results,
   });
 }
