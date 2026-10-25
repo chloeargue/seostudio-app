@@ -1,3 +1,5 @@
+import { callAI } from "./_lib/ai.js";
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -40,26 +42,11 @@ export default async function handler(req, res) {
     // Enrichir le prompt avec les données réelles
     const enrichedPrompt = prompt + realData;
 
-    const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.VITE_MISTRAL_KEY}`,
-      },
-      body: JSON.stringify({
-        model: req.body.model || "ministral-8b-2512",
-        messages: [{ role: "user", content: enrichedPrompt }],
-        max_tokens: 4000,
-        ...(/json/i.test(prompt) ? { response_format: { type: "json_object" } } : {}),
-      }),
-    });
-
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || "";
-    res.status(200).json({ text, mistral_error: text ? undefined : data });
+    const { text } = await callAI(enrichedPrompt, { json: /json/i.test(prompt), maxTokens: 6000 });
+    res.status(200).json({ text });
 
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Erreur API" });
+    res.status(200).json({ text: "", ai_error: String(error.message || error) });
   }
 }
