@@ -25,6 +25,7 @@ async function callAIOnce(prompt, { json = false, maxTokens = 6000 } = {}) {
   if (provider === "gemini") {
     res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
+      signal: AbortSignal.timeout(100000),
       headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
@@ -36,6 +37,7 @@ async function callAIOnce(prompt, { json = false, maxTokens = 6000 } = {}) {
   } else if (provider === "claude") {
     res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal: AbortSignal.timeout(100000),
       headers: {
         "Content-Type": "application/json",
         "x-api-key": process.env.ANTHROPIC_API_KEY,
@@ -48,6 +50,7 @@ async function callAIOnce(prompt, { json = false, maxTokens = 6000 } = {}) {
   } else {
     res = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
+      signal: AbortSignal.timeout(100000),
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.VITE_MISTRAL_KEY}` },
       body: JSON.stringify({
         model,
@@ -76,6 +79,7 @@ export async function callAI(prompt, opts = {}) {
       return await callAIOnce(prompt, opts);
     } catch (e) {
       lastErr = e;
+      if (e.name === "TimeoutError" || e.name === "AbortError") throw new Error("IA trop lente : pas de réponse après 100 secondes (" + pickProvider() + ")");
       if (!/"code":\s*(429|500|503)|UNAVAILABLE|overloaded|rate/i.test(String(e.message))) throw e;
       await new Promise((r) => setTimeout(r, 4000 * (i + 1)));
     }
