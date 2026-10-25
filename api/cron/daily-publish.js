@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { publishPost } from "../_lib/wp.js";
 import { callAI } from "../_lib/ai.js";
-import { geoArticlePrompt, assembleHtml, scoreGeo } from "../_lib/geo.js";
+import { geoArticlePrompt, assembleHtml, scoreGeo, parseGeoOutput } from "../_lib/geo.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -88,8 +88,8 @@ async function generateArticle({ keyword, sector, location, siteUrl, lang = "fr"
 
   const prompt = geoArticlePrompt({ keyword, sector, location, siteUrl, lang, author, realData });
 
-  const { text } = await callAI(prompt, { json: true, maxTokens: 8000 });
-  return safeParseJson(text);
+  const { text } = await callAI(prompt, { json: false, maxTokens: 8000 });
+  return parseGeoOutput(text);
 }
 
 export default async function handler(req, res) {
