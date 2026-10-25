@@ -7,6 +7,7 @@ export async function publishPost({ wp_url, wp_user, wp_pass, title, slug, conte
 
   const res = await fetch(`${base}/wp-json/wp/v2/posts`, {
     method: "POST",
+    signal: AbortSignal.timeout(40000),
     headers: {
       Authorization: `Basic ${creds}`,
       "Content-Type": "application/json",
@@ -35,7 +36,7 @@ export async function publishPost({ wp_url, wp_user, wp_pass, title, slug, conte
     let who = "";
     if (res.status === 401 || res.status === 403) {
       try {
-        const me = await fetch(`${base}/wp-json/wp/v2/users/me?context=edit`, { headers: { Authorization: `Basic ${creds}` } });
+        const me = await fetch(`${base}/wp-json/wp/v2/users/me?context=edit`, { signal: AbortSignal.timeout(15000), headers: { Authorization: `Basic ${creds}` } });
         const meData = await me.json().catch(() => ({}));
         who = ` | users/me: HTTP ${me.status}` + (me.ok ? ` user=${meData.slug} roles=${(meData.roles || []).join(",")}` : ` ${meData.code || ""}`);
         who += ` | user_saisi="${wp_user}" mdp_longueur=${String(wp_pass || "").length}`;
