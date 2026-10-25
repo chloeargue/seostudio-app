@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { publishPost } from "../_lib/wp.js";
+import { callAI } from "../_lib/ai.js";
 import { geoArticlePrompt, assembleHtml, scoreGeo } from "../_lib/geo.js";
 
 const supabase = createClient(
@@ -87,22 +88,7 @@ async function generateArticle({ keyword, sector, location, siteUrl, lang = "fr"
 
   const prompt = geoArticlePrompt({ keyword, sector, location, siteUrl, lang, author, realData });
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-  },
-    body: JSON.stringify({
-      model: process.env.AI_MODEL || "claude-haiku-5-5",
-      max_tokens: 8000,
-      messages: [{ role: "user", content: prompt }],
-  }),
-  });
-  const data = await response.json();
-  const text = data.content?.[0]?.text || "";
-  if (!text) throw new Error("IA: " + JSON.stringify(data).slice(0, 300));
+  const { text } = await callAI(prompt, { json: true, maxTokens: 8000 });
   return safeParseJson(text);
 }
 
@@ -194,9 +180,6 @@ export default async function handler(req, res) {
 
   return res.status(200).json({
     processed: results.length,
-    results,
-  });
-}
     results,
   });
 }
