@@ -150,3 +150,116 @@ export function parseGeoOutput(raw) {
     faq,
   };
 }
+
+// ================= Génération en plusieurs petites demandes =================
+// Au lieu d'un article de 2000 mots en un bloc (trop lent sur les offres gratuites),
+// on demande : 1) un plan court, 2) chaque section séparément.
+
+export function geoOutlinePrompt({ keyword, sector, location, siteUrl, lang = "fr", author, realData = "" }) {
+  const en = lang === "en";
+  const authorLine = author?.name
+    ? `${en ? "Author" : "Auteur"}: ${author.name}${author.expertise ? ", " + author.expertise : ""}`
+    : en ? "Author: none provided (do not invent one)" : "Auteur: aucun fourni (n'en invente pas)";
+  return `${en ? "You are an expert SEO/GEO copywriter. Write in English." : "Tu es un expert SEO/GEO et rédacteur web professionnel. Rédige en français."}
+Site: ${siteUrl} | ${en ? "Sector" : "Secteur"}: ${sector} | ${en ? "Location" : "Ville"}: ${location}
+${en ? "Main keyword" : "Mot-clé principal"}: "${keyword}"
+${authorLine}
+
+${en ? "Plan an article (do NOT write the article itself). Rules" : "Prépare le PLAN d'un article (n'écris PAS l'article). Règles"}:
+- "${keyword}" ${en ? "appears in the title, meta_title and meta_description" : "apparaît dans le titre, le meta_title et la meta_description"}
+- meta_title: ${en ? "60 characters max" : "60 caractères max"} ; meta_description: ${en ? "150 characters max, ends with a CTA" : "150 caractères max, finit par un CTA"}
+- ${en ? "tldr: 2 to 4 self-contained sentences answering the keyword's question directly" : "tldr : 2 à 4 phrases autonomes qui répondent directement à la question du mot-clé"}
+- ${en ? "PLAN: exactly 5 H2 headings, each a real question people ask, covering different sub-questions (comparison, pricing, common mistakes, local case...)" : "PLAN : exactement 5 titres H2, chacun formulé comme une vraie question que se posent les gens, couvrant des sous-questions différentes (comparaison, prix, erreurs courantes, cas local...)"}
+- ${en ? "FAQ: 3 to 5 short Q&As (answer in 1 to 3 sentences). Never invent figures." : "FAQ : 3 à 5 questions/réponses courtes (réponse en 1 à 3 phrases). N'invente jamais de chiffre."}
+
+${en ? "OUTPUT FORMAT (NOT JSON). Exactly these tags, each alone on its line:" : "FORMAT DE SORTIE (PAS DE JSON). Exactement ces balises, chacune seule sur sa ligne :"}
+[TITRE]
+[SLUG]
+[META_TITLE]
+[META_DESCRIPTION]
+[EXTRAIT]
+[TLDR]
+[PLAN]
+H2: ${en ? "question 1" : "question 1"}
+H2: ${en ? "question 2" : "question 2"}
+H2: ${en ? "question 3" : "question 3"}
+H2: ${en ? "question 4" : "question 4"}
+H2: ${en ? "question 5" : "question 5"}
+[FAQ]
+Q: ${en ? "question" : "question"}
+A: ${en ? "answer" : "réponse"}
+[FIN]${realData}`;
+}
+
+export function parseOutline(raw) {
+  const text = String(raw || "").replace(/```[a-z]*/gi, "").replace(/\r/g, "");
+  if (!/\[FIN\]/.test(text)) throw new Error("Plan IA tronqué (balise [FIN] absente)");
+  const parts = {};
+  const re = /^\s*\[(TITRE|SLUG|META_TITLE|META_DESCRIPTION|EXTRAIT|TLDR|PLAN|FAQ|FIN)\]\s*$/gm;
+  let m, last = null, lastEnd = 0;
+  while ((m = re.exec(text))) {
+    if (last) parts[last] = text.slice(lastEnd, m.index).trim();
+    last = m[1]; lastEnd = re.lastIndex;
+  }
+  const plan = (parts.PLAN || "").split("\n").map((l) => l.replace(/^\s*(H2:|[-*\d.)]+)\s*/i, "").trim()).filter(Boolean);
+  if (!parts.TITRE || plan.length < 3) throw new Error("Plan IA incomplet (titre ou sections manquants)");
+  const faq = [];
+  const fre = /Q:\s*(.+?)\s*\n\s*A:\s*([\s\S]*?)(?=\n\s*Q:|$)/g;
+  let f;
+  while ((f = fre.exec(parts.FAQ || ""))) faq.push({ q: f[1].trim(), a: f[2].trim() });
+  const one = (s) => (s || "").replace(/\s+/g, " ").trim();
+  return {
+    titre: one(parts.TITRE),
+    slug: one(parts.SLUG).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, ""),
+    meta_title: one(parts.META_TITLE),
+    meta_description: one(parts.META_DESCRIPTION),
+    extrait: one(parts.EXTRAIT),
+    tldr: one(parts.TLDR),
+    plan: plan.slice(0, 6),
+    faq,
+  };
+}
+
+export function geoSectionPrompt({ keyword, h2, index, total, siteUrl, lang = "fr", author, titre, realData = "" }) {
+  const en = lang === "en";
+  const first = index === 0;
+  const last = index === total - 1;
+  const today = monthYear(lang);
+  return `${en ? "You are an expert SEO/GEO copywriter. Write in English." : "Tu es un expert SEO/GEO et rédacteur web professionnel. Rédige en français."}
+${en ? "Article title" : "Titre de l'article"}: ${titre} | ${en ? "Main keyword" : "Mot-clé principal"}: "${keyword}"
+${en ? "Write ONLY section" : "Rédige UNIQUEMENT la section"} ${index + 1}/${total} : <h2>${h2}</h2>
+
+${en ? "RULES" : "RÈGLES"}:
+- ${en ? "HTML only (no markdown, no backticks, no <html>/<body>). Start with <h2>" : "HTML uniquement (pas de markdown, pas de backticks, pas de <html>/<body>). Commence par <h2>"}${h2}</h2>
+- ${en ? "300 to 450 words. First sentence = direct answer to the H2 question. Each paragraph self-contained, 100 to 150 words max (no \"as seen above\")." : "300 à 450 mots. Première phrase = réponse directe à la question du H2. Chaque paragraphe est autonome, 100 à 150 mots maximum (pas de « comme vu plus haut »)."}
+- ${en ? "Include a bulleted/numbered list or an HTML <table> if the topic fits." : "Inclus une liste à puces/numérotée ou un tableau HTML <table> si le sujet s'y prête."}
+- ${en ? "Use the keyword naturally. NEVER invent a figure, study, testimonial or source: use only the REAL DATA below, otherwise stay qualitative." : "Utilise le mot-clé naturellement. N'INVENTE JAMAIS un chiffre, une étude, un témoignage ou une source : utilise uniquement les DONNÉES RÉELLES ci-dessous, sinon reste qualitatif."}
+${first ? `- ${en ? `Before the <h2>, add <p><em>Updated ${today}${author?.name ? ` — By ${author.name}${author.expertise ? ", " + author.expertise : ""}` : ""}</em></p>` : `Avant le <h2>, ajoute <p><em>Mis à jour en ${today}${author?.name ? ` — Par ${author.name}${author.expertise ? ", " + author.expertise : ""}` : ""}</em></p>`}\n` : ""}${last ? `- ${en ? "End with a short actionable conclusion and one internal link" : "Termine par une courte conclusion actionnable et un lien interne"}: <a href="${siteUrl}/contact">${en ? "descriptive anchor" : "ancre descriptive"}</a>\n` : ""}- ${en ? "Output ONLY the HTML of this section." : "Ne renvoie QUE le HTML de cette section."}${realData}`;
+}
+
+export function cleanSectionHtml(raw) {
+  return String(raw || "")
+    .replace(/```[a-z]*/gi, "")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .trim();
+}
+
+// Orchestration (callAI est passé en paramètre pour rester testable)
+export async function buildArticleInSteps({ callAI, keyword, sector, location, siteUrl, lang = "fr", author, realData = "", concurrency = 3 }) {
+  const { text } = await callAI(geoOutlinePrompt({ keyword, sector, location, siteUrl, lang, author, realData }), { maxTokens: 2000 });
+  const outline = parseOutline(text);
+  const sections = new Array(outline.plan.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < outline.plan.length) {
+      const i = next++;
+      const r = await callAI(
+        geoSectionPrompt({ keyword, h2: outline.plan[i], index: i, total: outline.plan.length, siteUrl, lang, author, titre: outline.titre, realData }),
+        { maxTokens: 2000 }
+      );
+      sections[i] = cleanSectionHtml(r.text);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, outline.plan.length) }, worker));
+  return { ...outline, contenu_html: sections.join("\n") };
+}
