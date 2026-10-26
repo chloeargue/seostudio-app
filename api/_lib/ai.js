@@ -80,7 +80,7 @@ export async function callAI(prompt, opts = {}) {
     } catch (e) {
       lastErr = e;
       if (e.name === "TimeoutError" || e.name === "AbortError") {
-        lastErr = new Error("IA trop lente : pas de réponse après 70 secondes (" + pickProvider() + ")");
+        lastErr = new Error("IA trop lente : pas de réponse après 70 secondes (" + pickProvider() + "/" + (process.env.AI_MODEL || DEFAULT_MODELS[pickProvider()]) + ")");
         if (i >= 1) throw lastErr; // une seule relance après un délai dépassé
         continue;
       }
