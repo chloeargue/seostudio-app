@@ -1,8 +1,37 @@
 // Fichier utilitaire — PAS une route API (il vit dans api/_lib/, ignoré par le routeur Vercel).
 // Réutilisé par api/cron/daily-publish.js pour publier un article sur WordPress.
 
-export async function publishPost({ wp_url, wp_user, wp_pass, title, slug, content, excerpt, meta, keyword }) {
+export async function publishPost({ wp_url, wp_user, wp_pass, noria_token, title, slug, content, excerpt, meta, keyword, status = "draft", publish_date, image_url, image_alt }) {
   const base = wp_url.replace(/\/$/, "");
+
+  // Voie préférée : plugin Noria Connector (champs SEO, image, code secret, pas d'en-tête Authorization)
+  if (noria_token) {
+    const r = await fetch(`${base}/wp-json/noria/v1/publish`, {
+      method: "POST",
+      signal: AbortSignal.timeout(60000),
+      headers: { "Content-Type": "application/json", "X-Noria-Token": noria_token },
+      body: JSON.stringify({
+        token: noria_token,
+        title,
+        slug,
+        content,
+        excerpt,
+        status,
+        publish_date,
+        keyword,
+        meta_title: meta?.meta_title,
+        meta_description: meta?.meta_description,
+        image_url,
+        image_alt,
+      }),
+    });
+    const rawN = await r.text();
+    let dN = {};
+    try { dN = JSON.parse(rawN); } catch (e) {}
+    if (!r.ok) throw new Error(`Noria ${r.status} ${dN.code || ""} ${dN.message || rawN.slice(0, 200)}`.trim());
+    return { url: dN.link, id: dN.id, via: "noria", image: dN.image };
+  }
+
   const creds = Buffer.from(`${wp_user}:${wp_pass}`).toString("base64");
 
   const res = await fetch(`${base}/wp-json/wp/v2/posts`, {
