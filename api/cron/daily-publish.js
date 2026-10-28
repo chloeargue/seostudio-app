@@ -84,7 +84,7 @@ async function generateArticle({ keyword, sector, location, siteUrl, lang = "fr"
       }),
     });
     const searchData = await searchRes.json();
-    const snippets = searchData.organic?.slice(0, 4).map((r) => `- ${r.title}: ${r.snippet}`).join("\n") || "";
+    const snippets = searchData.organic?.slice(0, 4).map((r) => `- ${r.title}: ${r.snippet} (${r.link})`).join("\n") || "";
     if (snippets) realData = `\n\n${lang === "en" ? "REAL DATA FROM GOOGLE (cite the sources)" : "DONNÉES RÉELLES TROUVÉES SUR GOOGLE (cite les sources)"}:\n${snippets}\n`;
   }
 
@@ -135,7 +135,7 @@ export default async function handler(req, res) {
       });
       const lang = schedule.lang || site.lang || "fr";
       const html = assembleHtml(article, lang);
-      const geo = scoreGeo(article, keyword);
+      const geo = scoreGeo(article, keyword, site.wp_url);
 
       const published = await publishPost({
         wp_url: site.wp_url,
