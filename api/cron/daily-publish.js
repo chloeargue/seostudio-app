@@ -141,6 +141,7 @@ export default async function handler(req, res) {
         wp_url: site.wp_url,
         wp_user: site.wp_user,
         wp_pass: site.wp_pass,
+        noria_token: site.noria_token,
         title: article.titre,
         slug: article.slug,
         content: html,
