@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { publishPost } from "../_lib/wp.js";
 import { callAI } from "../_lib/ai.js";
+import { findImage } from "../_lib/images.js";
 import { buildArticleInSteps, assembleHtml, scoreGeo } from "../_lib/geo.js";
 
 const supabase = createClient(
@@ -137,11 +138,14 @@ export default async function handler(req, res) {
       const html = assembleHtml(article, lang);
       const geo = scoreGeo(article, keyword, site.wp_url);
 
+      const image = await findImage({ keyword, sector: schedule.sector || site.sector, lang });
       const published = await publishPost({
         wp_url: site.wp_url,
         wp_user: site.wp_user,
         wp_pass: site.wp_pass,
         noria_token: site.noria_token,
+        image_url: image?.url,
+        image_alt: image?.alt,
         title: article.titre,
         slug: article.slug,
         content: html,
@@ -157,7 +161,7 @@ export default async function handler(req, res) {
         status: "published",
         title: article.titre,
         content: html,
-        meta: { meta_title: article.meta_title, meta_description: article.meta_description, geo_score: geo.score, geo_checks: geo.checks, words: geo.words, lang },
+        meta: { meta_title: article.meta_title, meta_description: article.meta_description, geo_score: geo.score, geo_checks: geo.checks, words: geo.words, lang, image: image ? { alt: image.alt, credit: image.credit, source: image.source } : null },
         scheduled_for: new Date().toISOString().split("T")[0],
         wp_post_id: String(published.id),
       });
