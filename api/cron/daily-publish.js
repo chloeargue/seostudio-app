@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { publishPost } from "../_lib/wp.js";
+import { publishPost, setPostStatus } from "../_lib/wp.js";
+import { sendMail, signId, appUrl, noticeEmail, draftEmail } from "../_lib/mail.js";
 import { callAI } from "../_lib/ai.js";
 import { findImage } from "../_lib/images.js";
 import { buildArticleInSteps, assembleHtml, scoreGeo } from "../_lib/geo.js";
@@ -139,6 +140,13 @@ export default async function handler(req, res) {
       const geo = scoreGeo(article, keyword, site.wp_url);
 
       const image = await findImage({ keyword, sector: schedule.sector || site.sector, lang });
+
+      // Mode : « notice » (publication auto avec préavis, défaut) ou « draft » (brouillon à valider).
+      // Sans plugin Noria, impossible de programmer : on retombe sur le brouillon.
+      const mode = schedule.publication_mode === "draft" || !site.noria_token ? "draft" : "notice";
+      const noticeHours = Number(schedule.notice_hours) > 0 ? Number(schedule.notice_hours) : 48;
+      const publishAt = new Date(Date.now() + noticeHours * 3600 * 1000).toISOString();
+
       const published = await publishPost({
         wp_url: site.wp_url,
         wp_user: site.wp_user,
@@ -152,26 +160,56 @@ export default async function handler(req, res) {
         excerpt: article.extrait,
         meta: { meta_title: article.meta_title, meta_description: article.meta_description },
         keyword,
+        status: mode === "notice" ? "future" : "draft",
+        publish_date: mode === "notice" ? publishAt : undefined,
       });
 
-      await supabase.from("content_queue").insert({
+      const baseMeta = { meta_title: article.meta_title, meta_description: article.meta_description, geo_score: geo.score, geo_checks: geo.checks, words: geo.words, lang, mode, image: image ? { alt: image.alt, credit: image.credit, source: image.source } : null };
+      const { data: row, error: insErr } = await supabase.from("content_queue").insert({
         schedule_id: schedule.id,
         site_id: site.id,
         keyword,
-        status: "published",
+        status: mode === "notice" ? "scheduled" : "draft",
         title: article.titre,
         content: html,
-        meta: { meta_title: article.meta_title, meta_description: article.meta_description, geo_score: geo.score, geo_checks: geo.checks, words: geo.words, lang, image: image ? { alt: image.alt, credit: image.credit, source: image.source } : null },
-        scheduled_for: new Date().toISOString().split("T")[0],
+        meta: mode === "notice" ? { ...baseMeta, publish_at: publishAt } : baseMeta,
+        scheduled_for: (mode === "notice" ? publishAt : new Date().toISOString()).split("T")[0],
         wp_post_id: String(published.id),
-      });
+      }).select("id").single();
+      if (insErr) throw new Error(`Enregistrement content_queue : ${insErr.message}`);
+
+      // E-mail au client. Sécurité : si l'e-mail échoue en mode préavis, l'article repasse en brouillon
+      // (on ne publie jamais sans avoir pu prévenir).
+      const to = schedule.notify_email || site.notify_email || process.env.NOTIFY_EMAIL_DEFAULT;
+      const editUrl = `${site.wp_url.replace(/\/$/, "")}/wp-admin/post.php?post=${published.id}&action=edit`;
+      let mailStatus = "sent";
+      try {
+        if (mode === "notice") {
+          const blockUrl = `${appUrl(req)}/api/block?id=${row.id}&sig=${signId(row.id)}`;
+          await sendMail({
+            to,
+            subject: `Article programmé : ${article.titre}`,
+            html: noticeEmail({ title: article.titre, metaDescription: article.meta_description, publishAt, geoScore: geo.score, blockUrl, editUrl, siteName: site.name }),
+          });
+        } else {
+          await sendMail({ to, subject: `Article à valider : ${article.titre}`, html: draftEmail({ title: article.titre, editUrl, siteName: site.name }) });
+        }
+      } catch (mailErr) {
+        mailStatus = `failed: ${mailErr.message}`;
+        if (mode === "notice") {
+          try { await setPostStatus({ wp_url: site.wp_url, noria_token: site.noria_token, id: published.id, status: "draft" }); } catch (e) {}
+          await supabase.from("content_queue").update({ status: "draft", error: `E-mail de préavis non envoyé, article laissé en brouillon : ${mailErr.message}` }).eq("id", row.id);
+        } else {
+          await supabase.from("content_queue").update({ error: `E-mail non envoyé : ${mailErr.message}` }).eq("id", row.id);
+        }
+      }
 
       await supabase
         .from("publication_schedules")
         .update({ last_run_at: now, next_run_at: computeNextRun(schedule.frequency) })
         .eq("id", schedule.id);
 
-      results.push({ schedule_id: schedule.id, status: "success", keyword, geo_score: geo.score, wp_post_id: published.id });
+      results.push({ schedule_id: schedule.id, status: "success", mode, keyword, geo_score: geo.score, wp_post_id: published.id, mail: mailStatus });
     } catch (err) {
       await supabase.from("content_queue").insert({
         schedule_id: schedule.id,
