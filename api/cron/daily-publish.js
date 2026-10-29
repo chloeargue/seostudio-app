@@ -3,7 +3,7 @@ import { publishPost, setPostStatus } from "../_lib/wp.js";
 import { sendMail, signId, appUrl, noticeEmail, draftEmail } from "../_lib/mail.js";
 import { callAI } from "../_lib/ai.js";
 import { findImage } from "../_lib/images.js";
-import { pickKeyword } from "../_lib/keywords.js";
+import { pickKeyword, slugFromKeyword } from "../_lib/keywords.js";
 import { buildArticleInSteps, assembleHtml, scoreGeo } from "../_lib/geo.js";
 
 const supabase = createClient(
@@ -136,7 +136,7 @@ export default async function handler(req, res) {
         image_url: image?.url,
         image_alt: image?.alt,
         title: article.titre,
-        slug: article.slug,
+        slug: slugFromKeyword(keyword) || article.slug,
         content: html,
         excerpt: article.extrait,
         meta: { meta_title: article.meta_title, meta_description: article.meta_description },
