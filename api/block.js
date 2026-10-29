@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { verifySig, pageHtml, esc } from "./_lib/mail.js";
 import { setPostStatus } from "./_lib/wp.js";
 
-const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
+const supabase = createClient(process.env.VITE_SUPABASE_URL, (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY));
 
 export default async function handler(req, res) {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
