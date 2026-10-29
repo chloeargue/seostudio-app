@@ -40,6 +40,8 @@ async function serper(q, lang, key) {
 }
 
 export async function pickKeyword({ sector, geoZone, siteId, theme, lang = "fr", supabase, callAI, serperKey }) {
+  sector = String(sector || "").replace(/\s+/g, " ").trim();
+  geoZone = String(geoZone || "").replace(/\s+/g, " ").trim();
   const base = `${sector} ${geoZone}`.trim();
   const { data: usedRows } = await supabase.from("content_queue").select("keyword").eq("site_id", siteId);
   const used = (usedRows || []).map((u) => u.keyword).filter(Boolean);
