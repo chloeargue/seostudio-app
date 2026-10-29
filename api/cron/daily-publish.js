@@ -189,10 +189,10 @@ export default async function handler(req, res) {
           await sendMail({
             to,
             subject: `Article programmé : ${article.titre}`,
-            html: noticeEmail({ title: article.titre, metaDescription: article.meta_description, publishAt, geoScore: geo.score, blockUrl, editUrl, siteName: site.name }),
+            html: noticeEmail({ title: article.titre, metaDescription: article.meta_description, publishAt, geoScore: geo.score, blockUrl, editUrl, siteName: site.name, content: html, imageUrl: image?.url, imageAlt: image?.alt }),
           });
         } else {
-          await sendMail({ to, subject: `Article à valider : ${article.titre}`, html: draftEmail({ title: article.titre, editUrl, siteName: site.name }) });
+          await sendMail({ to, subject: `Article à valider : ${article.titre}`, html: draftEmail({ title: article.titre, editUrl, siteName: site.name, content: html, imageUrl: image?.url, imageAlt: image?.alt }) });
         }
       } catch (mailErr) {
         mailStatus = `failed: ${mailErr.message}`;
