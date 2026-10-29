@@ -7,7 +7,7 @@ import { buildArticleInSteps, assembleHtml, scoreGeo } from "../_lib/geo.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
+  (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY)
 );
 
 // Parse tolérant d'un JSON produit par un LLM :
@@ -49,7 +49,7 @@ async function findKeyword(sector, geoZone, siteId) {
     signal: AbortSignal.timeout(20000),
     headers: {
       "Content-Type": "application/json",
-      "X-API-KEY": process.env.VITE_SERPER_KEY,
+      "X-API-KEY": (process.env.SERPER_API_KEY || process.env.VITE_SERPER_KEY),
     },
     body: JSON.stringify({ q: `${sector} ${geoZone}`, gl: "fr", hl: "fr" }),
   });
@@ -73,11 +73,11 @@ async function findKeyword(sector, geoZone, siteId) {
 // Génère l'article complet via Mistral (même logique que api/generate.js)
 async function generateArticle({ keyword, sector, location, siteUrl, lang = "fr", author }) {
   let realData = "";
-  if (process.env.VITE_SERPER_KEY) {
+  if ((process.env.SERPER_API_KEY || process.env.VITE_SERPER_KEY)) {
     const searchRes = await fetch("https://google.serper.dev/search", {
       method: "POST",
     signal: AbortSignal.timeout(20000),
-      headers: { "Content-Type": "application/json", "X-API-KEY": process.env.VITE_SERPER_KEY },
+      headers: { "Content-Type": "application/json", "X-API-KEY": (process.env.SERPER_API_KEY || process.env.VITE_SERPER_KEY) },
       body: JSON.stringify({
         q: `${keyword} ${location} ${lang === "en" ? "statistics data figures" : "statistiques données chiffres"}`,
         gl: lang === "en" ? "us" : "fr",
