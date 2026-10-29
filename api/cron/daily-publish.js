@@ -135,7 +135,7 @@ export default async function handler(req, res) {
         author: site.author_name ? { name: site.author_name, expertise: site.author_expertise } : null,
       });
       const lang = schedule.lang || site.lang || "fr";
-      const html = assembleHtml(article, lang);
+      const html = assembleHtml(article, lang, { styled: true });
       const geo = scoreGeo(article, keyword, site.wp_url);
 
       const image = await findImage({ keyword, sector: schedule.sector || site.sector, lang });
