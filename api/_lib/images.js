@@ -54,7 +54,7 @@ export async function findImage({ keyword, sector, lang = "fr" }) {
         const r = await search(q, lang);
         if (r && r.url) {
           // Texte alternatif : reprend le sujet + décrit l'image (sans bourrage)
-          const alt = r.described ? `${keyword} : ${r.described}` : keyword;
+          const alt = `Illustration : ${keyword}`;
           return { url: r.url, alt: alt.slice(0, 200), credit: r.credit, source: r.source };
         }
       } catch (e) {
