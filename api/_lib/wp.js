@@ -75,3 +75,19 @@ export async function publishPost({ wp_url, wp_user, wp_pass, noria_token, title
   }
   return { url: data.link, id: data.id };
 }
+
+// Change le statut d'un article créé par Noria (draft, pending, publish)
+export async function setPostStatus({ wp_url, noria_token, id, status }) {
+  const base = wp_url.replace(/\/$/, "");
+  const r = await fetch(`${base}/wp-json/noria/v1/status`, {
+    method: "POST",
+    signal: AbortSignal.timeout(30000),
+    headers: { "Content-Type": "application/json", "X-Noria-Token": noria_token },
+    body: JSON.stringify({ token: noria_token, id: Number(id), status }),
+  });
+  const raw = await r.text();
+  let d = {};
+  try { d = JSON.parse(raw); } catch (e) {}
+  if (!r.ok) throw new Error(`Noria ${r.status} ${d.code || ""} ${d.message || raw.slice(0, 200)}`.trim());
+  return d;
+}
