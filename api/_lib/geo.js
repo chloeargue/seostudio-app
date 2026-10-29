@@ -13,10 +13,11 @@ const RULES = {
 8. SOURCES : cite les sources fournies avec leur nom dans le texte (ex. "selon <nom de la source>").
 9. FRAÎCHEUR : mentionne la date de mise à jour fournie ("Mis à jour en <mois année>"). N'écris aucune autre année de mémoire.
 10. AUTORITÉ (E-E-A-T) : si un auteur est fourni, ajoute une ligne "Par <auteur>, <expertise>" en début d'article. Sinon, n'invente aucun auteur, aucune expérience, aucune année d'expérience.
-11. TERRITOIRE SÉMANTIQUE (query fan-out) : couvre au moins 4 sous-questions voisines du sujet (comparaison, prix, erreurs courantes, cas local, etc.), une par H2.
+11. TERRITOIRE SÉMANTIQUE (query fan-out) : couvre au moins 4 sous-questions voisines du sujet (comparaison, critères de choix, erreurs courantes, cas local, etc.), une par H2.
 12. FAQ : 3 à 5 questions/réponses courtes (réponse en 1 à 3 phrases) dans le champ "faq".
 13. MAILLAGE : au moins 1 lien interne vers le site, avec une ancre descriptive.
-14. TON : factuel, précis, utile ; pas de remplissage ni de formules creuses. Pas de markdown, HTML propre uniquement.`,
+14. TON : factuel, précis, utile ; pas de remplissage ni de formules creuses. Pas de markdown, HTML propre uniquement.
+15. AUCUN PRIX : n'indique jamais de prix, tarif, budget, fourchette de prix ni montant en euros, et n'écris aucun titre portant sur les prix. Si le sujet touche au coût, explique les facteurs qui le font varier et invite le lecteur à demander un devis.`,
   en: `GEO RULES (optimisation for ChatGPT, Perplexity, Gemini, Claude, AI Overviews) — MANDATORY:
 1. ANSWER FIRST: the direct answer to the keyword's question appears within the first 100 words.
 2. SUMMARY BOX (field "tldr"): 2 to 4 self-contained sentences (definition, criteria, key figures), readable without the rest of the page.
@@ -28,10 +29,11 @@ const RULES = {
 8. SOURCES: name the provided sources in the text (e.g. "according to <source name>").
 9. FRESHNESS: mention the provided update date ("Updated <month year>"). Write no other year from memory.
 10. AUTHORITY (E-E-A-T): if an author is provided, add a "By <author>, <expertise>" line at the top. Otherwise invent no author, experience or years of experience.
-11. SEMANTIC TERRITORY (query fan-out): cover at least 4 neighbouring sub-questions (comparison, pricing, common mistakes, local case, etc.), one per H2.
+11. SEMANTIC TERRITORY (query fan-out): cover at least 4 neighbouring sub-questions (comparison, selection criteria, common mistakes, local case, etc.), one per H2.
 12. FAQ: 3 to 5 short Q&As (1 to 3 sentence answers) in the "faq" field.
 13. INTERNAL LINKING: at least 1 internal link to the site with a descriptive anchor.
-14. TONE: factual, precise, useful; no filler. No markdown, clean HTML only.`,
+14. TONE: factual, precise, useful; no filler. No markdown, clean HTML only.
+15. NO PRICES: never state a price, rate, budget, price range or amount in euros/dollars, and never use a heading about prices. If the topic touches cost, explain the factors that influence it and invite the reader to request a quote.`,
 };
 
 const monthYear = (lang, d = new Date()) =>
@@ -108,11 +110,11 @@ export function styleHtml(html) {
 export function assembleHtml(article, lang = "fr", { styled = false } = {}) {
   const en = lang === "en";
   const tldr = article.tldr
-    ? `<div class="geo-tldr" style="background:#eef4ff;border-left:4px solid #2e5bff;padding:1em 1.2em;margin:0 0 1.8em;border-radius:6px;"><p style="margin:0;line-height:1.6;"><strong>${en ? "In short" : "En bref"} :</strong> ${esc(article.tldr)}</p></div>\n`
+    ? `<div class="geo-tldr" style="background:#eef4ff;border-left:4px solid #2e5bff;padding:1em 1.2em;margin:0 0 1.8em;border-radius:6px;"><p style="margin:0;line-height:1.6;"><strong>${en ? "In short" : "En bref"} :</strong> ${esc(stripPriceSentences(article.tldr))}</p></div>\n`
     : "";
   const faq = Array.isArray(article.faq) && article.faq.length
     ? `\n<h2>${en ? "Frequently asked questions" : "Questions fréquentes"}</h2>\n` +
-      article.faq.map((f) => `<h3>${esc(f.q)}</h3>\n<p>${esc(f.a)}</p>`).join("\n")
+      article.faq.map((f) => ({ q: f.q, a: stripPriceSentences(f.a) })).filter((f) => f.a && !/\b(prix|tarifs?|cout|coût|budget|price|pricing|cost)\b/i.test(f.q)).map((f) => `<h3>${esc(f.q)}</h3>\n<p>${esc(f.a)}</p>`).join("\n")
     : "";
   const html = tldr + (article.contenu_html || "") + faq;
   return styled ? styleHtml(html) : html;
@@ -207,7 +209,8 @@ ${en ? "Plan an article (do NOT write the article itself). Rules" : "Prépare le
 - "${keyword}" ${en ? "appears in the title, meta_title and meta_description" : "apparaît dans le titre, le meta_title et la meta_description"}
 - meta_title: ${en ? "60 characters max" : "60 caractères max"} ; meta_description: ${en ? "150 characters max, ends with a CTA" : "150 caractères max, finit par un CTA"}
 - ${en ? `tldr: 2 to 4 self-contained sentences answering the keyword's question directly; the FIRST sentence must contain the exact phrase "${keyword}"` : `tldr : 2 à 4 phrases autonomes qui répondent directement à la question du mot-clé ; la PREMIÈRE phrase doit contenir exactement l'expression « ${keyword} »`}
-- ${en ? "PLAN: exactly 5 H2 headings, each a real question people ask, covering different sub-questions (comparison, pricing, common mistakes, local case...)" : "PLAN : exactement 5 titres H2, chacun formulé comme une vraie question que se posent les gens, couvrant des sous-questions différentes (comparaison, prix, erreurs courantes, cas local...)"}
+- ${en ? "No H2 about prices, rates or budgets." : "Aucun H2 sur les prix, tarifs ou budgets."}
+- ${en ? "PLAN: exactly 5 H2 headings, each a real question people ask, covering different sub-questions (comparison, selection criteria, common mistakes, local case...)" : "PLAN : exactement 5 titres H2, chacun formulé comme une vraie question que se posent les gens, couvrant des sous-questions différentes (comparaison, critères de choix, erreurs courantes, cas local...)"}
 - ${en ? "FAQ: 3 to 5 short Q&As (answer in 1 to 3 sentences). Never invent figures." : "FAQ : 3 à 5 questions/réponses courtes (réponse en 1 à 3 phrases). N'invente jamais de chiffre."}
 
 ${en ? "OUTPUT FORMAT (NOT JSON). Exactly these tags, each alone on its line:" : "FORMAT DE SORTIE (PAS DE JSON). Exactement ces balises, chacune seule sur sa ligne :"}
@@ -273,15 +276,30 @@ ${en ? "RULES" : "RÈGLES"}:
 - ${en ? "Include a bulleted/numbered list or an HTML <table> if the topic fits." : "Inclus une liste à puces/numérotée ou un tableau HTML <table> si le sujet s'y prête."}
 - ${en ? `Use the exact phrase "${keyword}" ${first ? 5 : 4} times in this section (naturally spread, not stuffed; at least once in every ~100 words of text is NOT required, but 4 mentions are), plus close variants.` : `Utilise l'expression exacte « ${keyword} » ${first ? 5 : 4} fois dans cette section (répartie naturellement, sans bourrage ; compte-les avant de répondre), plus des variantes proches.`}
 ${(index === 1 || index === 3) && /https?:\/\//.test(realData) ? `- ${en ? 'Include ONE external link to a source from the REAL DATA below, written as <a href="URL" target="_blank" rel="noopener">source name</a> (never nofollow). Use ONLY URLs listed below; never invent a URL.' : 'Insère UN lien externe vers une source des DONNÉES RÉELLES ci-dessous, écrit <a href="URL" target="_blank" rel="noopener">nom de la source</a> (jamais nofollow). Utilise UNIQUEMENT les URL listées ci-dessous ; n\'invente jamais d\'URL.'}\n` : ""}
+- ${en ? "NEVER state any price, rate, budget or price range (no amounts in euros/dollars): if cost comes up, explain what makes it vary and suggest requesting a quote." : "N'indique JAMAIS de prix, tarif, budget ni fourchette de prix (aucun montant en euros) : si le coût est évoqué, explique ce qui le fait varier et invite à demander un devis."}
 - ${en ? "Use the keyword naturally. NEVER invent a figure, study, testimonial or source: use only the REAL DATA below, otherwise stay qualitative." : "Utilise le mot-clé naturellement. N'INVENTE JAMAIS un chiffre, une étude, un témoignage ou une source : utilise uniquement les DONNÉES RÉELLES ci-dessous, sinon reste qualitatif."}
 ${first ? `- ${en ? `Before the <h2>, add <p><em>Updated ${today}${author?.name ? ` — By ${author.name}${author.expertise ? ", " + author.expertise : ""}` : ""}</em></p>` : `Avant le <h2>, ajoute <p><em>Mis à jour en ${today}${author?.name ? ` — Par ${author.name}${author.expertise ? ", " + author.expertise : ""}` : ""}</em></p>`}\n` : ""}${last ? `- ${en ? "End with a short actionable conclusion and one internal link" : "Termine par une courte conclusion actionnable et un lien interne"}: <a href="${siteUrl}/contact">${en ? "descriptive anchor" : "ancre descriptive"}</a>\n` : ""}- ${en ? "Output ONLY the HTML of this section." : "Ne renvoie QUE le HTML de cette section."}${realData}`;
 }
 
+// Filet de sécurité : retire toute phrase qui annonce un prix (€, euros, « à partir de 500 »…)
+const PRICE = /(\d[\d\s.,]*\s?(€|euros?|eur\b|\$|k€)|(€|\$)\s?\d|(à partir de|starting at|from)\s+\d|tarifs?\s+(de|à|:)\s*\d)/i;
+export function stripPriceSentences(text) {
+  return String(text || "").split(/(?<=[.!?])\s+/).filter((x) => !PRICE.test(x)).join(" ").trim();
+}
+export function stripPrices(html) {
+  return String(html || "")
+    .replace(/<tr[\s\S]*?<\/tr>/gi, (row) => (!/<th/i.test(row) && PRICE.test(row) ? "" : row)).replace(/<(p|li)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi, (m, tag, attrs = "", inner) => {
+    if (!PRICE.test(inner)) return m;
+    const kept = inner.split(/(?<=[.!?])\s+/).filter((sent) => !PRICE.test(sent)).join(" ").trim();
+    return kept ? `<${tag}${attrs || ""}>${kept}</${tag}>` : "";
+  });
+}
+
 export function cleanSectionHtml(raw) {
-  return String(raw || "")
+  return stripPrices(String(raw || "")
     .replace(/```[a-z]*/gi, "")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .trim();
+    .trim());
 }
 
 // Orchestration (callAI est passé en paramètre pour rester testable)
