@@ -3,6 +3,7 @@ import { publishPost, setPostStatus } from "../_lib/wp.js";
 import { sendMail, signId, appUrl, noticeEmail, draftEmail } from "../_lib/mail.js";
 import { callAI } from "../_lib/ai.js";
 import { findImage } from "../_lib/images.js";
+import { pickKeyword } from "../_lib/keywords.js";
 import { buildArticleInSteps, assembleHtml, scoreGeo } from "../_lib/geo.js";
 
 const supabase = createClient(
@@ -40,34 +41,6 @@ function computeNextRun(frequency, from = new Date()) {
   else if (frequency === "monthly") d.setMonth(d.getMonth() + 1);
   else if (frequency === "quarterly") d.setMonth(d.getMonth() + 3);
   return d.toISOString();
-}
-
-// Cherche un mot-clé secteur/géo via Serper, en évitant ceux déjà utilisés pour ce site
-async function findKeyword(sector, geoZone, siteId) {
-  const searchRes = await fetch("https://google.serper.dev/search", {
-    method: "POST",
-    signal: AbortSignal.timeout(20000),
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-KEY": (process.env.SERPER_API_KEY || process.env.VITE_SERPER_KEY),
-    },
-    body: JSON.stringify({ q: `${sector} ${geoZone}`, gl: "fr", hl: "fr" }),
-  });
-  const data = await searchRes.json();
-
-  const candidates = [
-    ...(data.relatedSearches || []).map((r) => r.query),
-    ...(data.peopleAlsoAsk || []).map((p) => p.question),
-  ].filter(Boolean);
-
-  const { data: used } = await supabase
-    .from("content_queue")
-    .select("keyword")
-    .eq("site_id", siteId);
-  const usedSet = new Set((used || []).map((u) => (u.keyword || "").toLowerCase()));
-
-  const fresh = candidates.find((k) => !usedSet.has(k.toLowerCase()));
-  return fresh || `${sector} ${geoZone}`;
 }
 
 // Génère l'article complet via Mistral (même logique que api/generate.js)
@@ -121,11 +94,17 @@ export default async function handler(req, res) {
     if (Date.now() - t0 > 60000) break; // évite de dépasser la limite de 300 s de Vercel
 
     try {
-      const keyword = await findKeyword(
-        schedule.sector || site.sector,
-        schedule.geo_zone || site.location,
-        site.id
-      );
+      const lang0 = schedule.lang || site.lang || "fr";
+      const { keyword } = await pickKeyword({
+        sector: schedule.sector || site.sector,
+        geoZone: schedule.geo_zone || site.location,
+        siteId: site.id,
+        theme: schedule.theme,
+        lang: lang0,
+        supabase,
+        callAI,
+        serperKey: (process.env.SERPER_API_KEY || process.env.VITE_SERPER_KEY),
+      });
 
       const article = await generateArticle({
         keyword,
@@ -139,7 +118,9 @@ export default async function handler(req, res) {
       const html = assembleHtml(article, lang, { styled: true });
       const geo = scoreGeo(article, keyword, site.wp_url);
 
-      const image = await findImage({ keyword, sector: schedule.sector || site.sector, lang });
+      const { data: past } = await supabase.from("content_queue").select("meta").eq("site_id", site.id);
+      const usedImages = (past || []).map((r) => r.meta?.image?.source).filter(Boolean);
+      const image = await findImage({ keyword, sector: schedule.sector || site.sector, lang, exclude: usedImages });
 
       // Mode : « notice » (publication auto avec préavis, défaut) ou « draft » (brouillon à valider).
       // Sans plugin Noria, impossible de programmer : on retombe sur le brouillon.
