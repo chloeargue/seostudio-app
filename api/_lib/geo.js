@@ -80,17 +80,42 @@ ${realData}`;
 
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+// Mise en forme intégrée (styles en ligne) : indépendante du thème WordPress
+export function styleHtml(html) {
+  const add = (tag, style) => (h) =>
+    h.replace(new RegExp(`<${tag}(\\s[^>]*)?>`, "gi"), (m, attrs = "") =>
+      /style=/i.test(attrs) ? m : `<${tag}${attrs} style="${style}">`);
+  const rules = [
+    ["table", "width:100%;border-collapse:collapse;margin:1.5em 0;font-size:0.95em;"],
+    ["th", "border:1px solid #d0d5dd;padding:10px 12px;background:#f2f4f7;text-align:left;font-weight:700;"],
+    ["td", "border:1px solid #d0d5dd;padding:10px 12px;vertical-align:top;"],
+    ["ul", "margin:1em 0 1.2em 1.4em;padding-left:1em;list-style:disc;"],
+    ["ol", "margin:1em 0 1.2em 1.4em;padding-left:1em;list-style:decimal;"],
+    ["li", "margin:0.4em 0;line-height:1.6;"],
+    ["h2", "margin:2em 0 0.6em;line-height:1.3;"],
+    ["h3", "margin:1.5em 0 0.5em;line-height:1.35;"],
+    ["p", "margin:0 0 1.1em;line-height:1.7;"],
+    ["blockquote", "margin:1.5em 0;padding:0.8em 1.2em;border-left:4px solid #98a2b3;background:#f9fafb;"],
+  ];
+  let out = String(html || "");
+  for (const [tag, style] of rules) out = add(tag, style)(out);
+  // Tableaux : conteneur défilant sur mobile
+  out = out.replace(/<table\b/gi, '<div style="overflow-x:auto;"><table').replace(/<\/table>/gi, "</table></div>");
+  return out;
+}
+
 // Assemble le HTML final : synthèse en tête + contenu + FAQ
-export function assembleHtml(article, lang = "fr") {
+export function assembleHtml(article, lang = "fr", { styled = false } = {}) {
   const en = lang === "en";
   const tldr = article.tldr
-    ? `<div class="geo-tldr"><p><strong>${en ? "In short" : "En bref"} :</strong> ${esc(article.tldr)}</p></div>\n`
+    ? `<div class="geo-tldr" style="background:#eef4ff;border-left:4px solid #2e5bff;padding:1em 1.2em;margin:0 0 1.8em;border-radius:6px;"><p style="margin:0;line-height:1.6;"><strong>${en ? "In short" : "En bref"} :</strong> ${esc(article.tldr)}</p></div>\n`
     : "";
   const faq = Array.isArray(article.faq) && article.faq.length
     ? `\n<h2>${en ? "Frequently asked questions" : "Questions fréquentes"}</h2>\n` +
       article.faq.map((f) => `<h3>${esc(f.q)}</h3>\n<p>${esc(f.a)}</p>`).join("\n")
     : "";
-  return tldr + (article.contenu_html || "") + faq;
+  const html = tldr + (article.contenu_html || "") + faq;
+  return styled ? styleHtml(html) : html;
 }
 
 // Score GEO heuristique (0-100) + détail des critères
@@ -124,7 +149,7 @@ export function scoreGeo(article, keyword = "", siteUrl = "") {
       if (!kw || !words.length) return false;
       const n = text.toLowerCase().split(kw).length - 1;
       const d = (n / words.length) * 100;
-      return d >= 0.5 && d <= 2.5;
+      return d >= 0.9 && d <= 2.5;
     })(),
     longueur_1500_3000: words.length >= 1500 && words.length <= 3000,
   };
@@ -246,7 +271,7 @@ ${en ? "RULES" : "RÈGLES"}:
 - ${en ? "HTML only (no markdown, no backticks, no <html>/<body>). Start with <h2>" : "HTML uniquement (pas de markdown, pas de backticks, pas de <html>/<body>). Commence par <h2>"}${h2}</h2>
 - ${en ? `300 to 450 words. First sentence = direct answer to the H2 question${first ? ` and contains the exact phrase "${keyword}"` : ""}. Each paragraph self-contained, 100 to 150 words max (no \"as seen above\").` : `300 à 450 mots. Première phrase = réponse directe à la question du H2${first ? ` et contenant exactement l'expression « ${keyword} »` : ""}. Chaque paragraphe est autonome, 100 à 150 mots maximum (pas de « comme vu plus haut »).`}
 - ${en ? "Include a bulleted/numbered list or an HTML <table> if the topic fits." : "Inclus une liste à puces/numérotée ou un tableau HTML <table> si le sujet s'y prête."}
-- ${en ? `Use the exact phrase "${keyword}" ${first ? 3 : 2} times in this section (naturally spread, not stuffed), plus close variants.` : `Utilise l'expression exacte « ${keyword} » ${first ? 3 : 2} fois dans cette section (répartie naturellement, sans bourrage), plus des variantes proches.`}
+- ${en ? `Use the exact phrase "${keyword}" ${first ? 5 : 4} times in this section (naturally spread, not stuffed; at least once in every ~100 words of text is NOT required, but 4 mentions are), plus close variants.` : `Utilise l'expression exacte « ${keyword} » ${first ? 5 : 4} fois dans cette section (répartie naturellement, sans bourrage ; compte-les avant de répondre), plus des variantes proches.`}
 ${(index === 1 || index === 3) && /https?:\/\//.test(realData) ? `- ${en ? 'Include ONE external link to a source from the REAL DATA below, written as <a href="URL" target="_blank" rel="noopener">source name</a> (never nofollow). Use ONLY URLs listed below; never invent a URL.' : 'Insère UN lien externe vers une source des DONNÉES RÉELLES ci-dessous, écrit <a href="URL" target="_blank" rel="noopener">nom de la source</a> (jamais nofollow). Utilise UNIQUEMENT les URL listées ci-dessous ; n\'invente jamais d\'URL.'}\n` : ""}
 - ${en ? "Use the keyword naturally. NEVER invent a figure, study, testimonial or source: use only the REAL DATA below, otherwise stay qualitative." : "Utilise le mot-clé naturellement. N'INVENTE JAMAIS un chiffre, une étude, un témoignage ou une source : utilise uniquement les DONNÉES RÉELLES ci-dessous, sinon reste qualitatif."}
 ${first ? `- ${en ? `Before the <h2>, add <p><em>Updated ${today}${author?.name ? ` — By ${author.name}${author.expertise ? ", " + author.expertise : ""}` : ""}</em></p>` : `Avant le <h2>, ajoute <p><em>Mis à jour en ${today}${author?.name ? ` — Par ${author.name}${author.expertise ? ", " + author.expertise : ""}` : ""}</em></p>`}\n` : ""}${last ? `- ${en ? "End with a short actionable conclusion and one internal link" : "Termine par une courte conclusion actionnable et un lien interne"}: <a href="${siteUrl}/contact">${en ? "descriptive anchor" : "ancre descriptive"}</a>\n` : ""}- ${en ? "Output ONLY the HTML of this section." : "Ne renvoie QUE le HTML de cette section."}${realData}`;
