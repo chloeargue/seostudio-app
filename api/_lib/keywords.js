@@ -17,15 +17,17 @@ export function similarity(a, b) {
   return inter / new Set([...A, ...B]).size;
 }
 
+// Pas d'article sur les prix : on écarte les recherches orientées tarifs
+export const PRICE_INTENT = /\b(prix|tarifs?|cout|couts|combien|budget|gratuit|devis|cost|costs|pricing|price|cheap|how much)\b/;
 export const isDuplicate = (cand, used) => used.some((u) => similarity(cand, u) >= 0.85);
 
 const ANGLES = {
-  fr: (b, sector) => [b, `${b} prix`, `comment choisir ${sector}`, `${b} avis conseils`, `${sector} pour pme ${b.split(" ").slice(-1)[0]}`],
-  en: (b, sector) => [b, `${b} cost`, `how to choose ${sector}`, `${b} tips`, `${sector} for small business`],
+  fr: (b, sector) => [b, `${b} stratégie`, `comment choisir ${sector}`, `${b} avis conseils`, `${sector} pour pme ${b.split(" ").slice(-1)[0]}`],
+  en: (b, sector) => [b, `${b} strategy`, `how to choose ${sector}`, `${b} tips`, `${sector} for small business`],
 };
 const MODIFIERS = {
-  fr: ["prix", "tarifs", "agence ou freelance", "conseils", "avis", "comment choisir", "erreurs à éviter", "checklist", "exemple concret", "pour pme", "pour artisans", "résultats"],
-  en: ["cost", "pricing", "agency or freelancer", "tips", "reviews", "how to choose", "mistakes to avoid", "checklist", "example", "for small business", "for local business", "results"],
+  fr: ["agence ou freelance", "conseils", "avis", "comment choisir", "erreurs à éviter", "checklist", "exemple concret", "pour pme", "pour artisans", "résultats"],
+  en: ["agency or freelancer", "tips", "reviews", "how to choose", "mistakes to avoid", "checklist", "example", "for small business", "for local business", "results"],
 };
 
 async function serper(q, lang, key) {
@@ -66,7 +68,7 @@ export async function pickKeyword({ sector, geoZone, siteId, theme, lang = "fr",
     if (n.length < 8 || n.split(" ").length > 7 || seen.has(n)) continue;
     seen.add(n);
     if (baseTokens.length && !baseTokens.some((w) => n.includes(w))) continue; // hors sujet
-    if (isDuplicate(c, used)) continue;
+    if (PRICE_INTENT.test(n) || isDuplicate(c, used)) continue;
     fresh.push(c.replace(/\s+/g, " ").replace(/[?!.]+$/, "").trim());
   }
 
@@ -74,7 +76,7 @@ export async function pickKeyword({ sector, geoZone, siteId, theme, lang = "fr",
   if (!fresh.length) {
     for (const m of MODIFIERS[lang === "en" ? "en" : "fr"]) {
       const c = `${base} ${m}`;
-      if (!isDuplicate(c, used)) fresh.push(c);
+      if (!PRICE_INTENT.test(norm(c)) && !isDuplicate(c, used)) fresh.push(c);
     }
   }
   if (!fresh.length) return { keyword: `${base} ${new Date().getFullYear()} ${Date.now() % 1000}`, how: "fallback" };
@@ -87,7 +89,7 @@ export async function pickKeyword({ sector, geoZone, siteId, theme, lang = "fr",
 Voici de vraies recherches faites par des internautes (numérotées) :
 ${shortlist.map((k, i) => `${i + 1}. ${k}`).join("\n")}
 Déjà traités sur ce site : ${used.slice(-15).join(" | ") || "aucun"}.
-Choisis la recherche qui (1) correspond à une vraie intention de trouver un prestataire ou de résoudre un problème concret, (2) n'est pas un quasi-doublon de ce qui est déjà traité, (3) permet un article utile et précis.
+Choisis la recherche qui (1) ne parle PAS de prix ni de tarifs, correspond à une vraie intention de trouver un prestataire ou de résoudre un problème concret, (2) n'est pas un quasi-doublon de ce qui est déjà traité, (3) permet un article utile et précis.
 Réponds UNIQUEMENT par son numéro.`;
       const { text } = await callAI(prompt, { maxTokens: 20 });
       const n = parseInt(String(text).match(/\d+/)?.[0], 10);
@@ -95,4 +97,9 @@ Réponds UNIQUEMENT par son numéro.`;
     } catch (e) { /* on retombe sur le premier candidat */ }
   }
   return { keyword: shortlist[0], how: "premier" };
+}
+
+// URL de l'article = mot-clé principal (sans accents, tirets), pour Rank Math
+export function slugFromKeyword(keyword) {
+  return norm(keyword).split(" ").filter(Boolean).join("-").slice(0, 70).replace(/-+$/, "");
 }
