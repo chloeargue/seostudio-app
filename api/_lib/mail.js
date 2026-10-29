@@ -47,24 +47,35 @@ export async function sendMail({ to, subject, html }) {
 const shell = (inner) => `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#101828;line-height:1.6;">${inner}<p style="color:#98a2b3;font-size:12px;margin-top:32px;">Envoyé par Noria</p></div>`;
 const button = (href, label, color) => `<p style="margin:24px 0;"><a href="${esc(href)}" style="background:${color};color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:700;display:inline-block;">${esc(label)}</a></p>`;
 
-export function noticeEmail({ title, metaDescription, publishAt, geoScore, blockUrl, editUrl, siteName }) {
+// Article complet intégré à l'e-mail : lisible sans aucune connexion
+const articleBlock = ({ title, content, imageUrl, imageAlt }) => `
+  <hr style="border:0;border-top:1px solid #e4e7ec;margin:32px 0 24px;">
+  <p style="color:#98a2b3;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 16px;">Article complet</p>
+  ${imageUrl ? `<img src="${esc(imageUrl)}" alt="${esc(imageAlt || title)}" style="width:100%;height:auto;border-radius:8px;margin-bottom:16px;">` : ""}
+  <h1 style="font-size:24px;line-height:1.3;margin:0 0 16px;">${esc(title)}</h1>
+  <div>${content || ""}</div>`;
+
+export function noticeEmail({ title, metaDescription, publishAt, geoScore, blockUrl, editUrl, siteName, content, imageUrl, imageAlt }) {
   const when = new Date(publishAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "full", timeStyle: "short" });
   return shell(`
     <h2 style="margin:0 0 8px;">Un article sera publié le ${esc(when)}</h2>
     <p><strong>${esc(title)}</strong>${siteName ? ` — ${esc(siteName)}` : ""}</p>
     ${metaDescription ? `<p style="color:#475467;">${esc(metaDescription)}</p>` : ""}
     ${geoScore != null ? `<p style="color:#475467;">Score GEO : ${esc(geoScore)}/100</p>` : ""}
-    <p>Sans action de votre part, il sera publié automatiquement à cette date. Pour l'empêcher :</p>
+    <p>Vous pouvez lire l'article ci-dessous. Sans action de votre part, il sera publié automatiquement à cette date. Pour l'empêcher :</p>
     ${button(blockUrl, "Bloquer la publication", "#d92d20")}
-    <p><a href="${esc(editUrl)}">Relire ou modifier l'article dans WordPress</a></p>`);
+    ${articleBlock({ title, content, imageUrl, imageAlt })}
+    <hr style="border:0;border-top:1px solid #e4e7ec;margin:32px 0 16px;">
+    <p style="font-size:13px;color:#475467;">Pour modifier le texte, <a href="${esc(editUrl)}">ouvrez-le dans WordPress</a> (connexion requise).</p>`);
 }
 
-export function draftEmail({ title, editUrl, siteName }) {
+export function draftEmail({ title, editUrl, siteName, content, imageUrl, imageAlt }) {
   return shell(`
     <h2 style="margin:0 0 8px;">Un article est prêt à être validé</h2>
     <p><strong>${esc(title)}</strong>${siteName ? ` — ${esc(siteName)}` : ""}</p>
-    <p>Il est enregistré en brouillon dans WordPress. Relisez-le puis publiez-le quand vous le souhaitez.</p>
-    ${button(editUrl, "Ouvrir le brouillon", "#2e5bff")}`);
+    <p>Il est enregistré en brouillon dans WordPress. Vous pouvez le lire ci-dessous, puis le publier quand vous le souhaitez.</p>
+    ${button(editUrl, "Ouvrir le brouillon dans WordPress", "#2e5bff")}
+    ${articleBlock({ title, content, imageUrl, imageAlt })}`);
 }
 
 export function pageHtml(title, body) {
