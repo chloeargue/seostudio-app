@@ -17,9 +17,8 @@ export function pickProvider() {
   return "mistral";
 }
 
-async function callAIOnce(prompt, { json = false, maxTokens = 6000 } = {}) {
-  const provider = pickProvider();
-  const model = process.env.AI_MODEL || DEFAULT_MODELS[provider];
+async function callAIOnce(prompt, { json = false, maxTokens = 6000 } = {}, provider = pickProvider(), modelOverride) {
+  const model = modelOverride || (provider === pickProvider() ? process.env.AI_MODEL : "") || DEFAULT_MODELS[provider];
   let res, data, text = "";
 
   if (provider === "gemini") {
@@ -51,7 +50,7 @@ async function callAIOnce(prompt, { json = false, maxTokens = 6000 } = {}) {
     res = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
       signal: AbortSignal.timeout(70000),
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.VITE_MISTRAL_KEY}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${(process.env.MISTRAL_API_KEY || process.env.VITE_MISTRAL_KEY)}` },
       body: JSON.stringify({
         model,
         messages: [{ role: "user", content: prompt }],
@@ -71,21 +70,38 @@ async function callAIOnce(prompt, { json = false, maxTokens = 6000 } = {}) {
   return { text, provider, model };
 }
 
-// Relance automatique si le fournisseur est surchargé (429 / 500 / 503)
+const isOverload = (e) => /"code":\s*(429|500|503)|UNAVAILABLE|overloaded|rate|quota/i.test(String(e.message));
+
+// Fournisseurs de secours : ceux dont une clé est présente (Mistral, Claude, Gemini)
+function providerChain() {
+  const main = pickProvider();
+  const all = [];
+  if (process.env.GEMINI_API_KEY) all.push("gemini");
+  if (process.env.ANTHROPIC_API_KEY) all.push("claude");
+  if (process.env.MISTRAL_API_KEY || process.env.VITE_MISTRAL_KEY) all.push("mistral");
+  return [main, ...all.filter((p) => p !== main)];
+}
+
+// 1) relances sur le fournisseur principal si surchargé (429 / 500 / 503), avec pauses croissantes
+// 2) si toujours en échec : bascule automatique sur un autre fournisseur configuré
 export async function callAI(prompt, opts = {}) {
   let lastErr;
-  for (let i = 0; i < 3; i++) {
-    try {
-      return await callAIOnce(prompt, opts);
-    } catch (e) {
-      lastErr = e;
-      if (e.name === "TimeoutError" || e.name === "AbortError") {
-        lastErr = new Error("IA trop lente : pas de réponse après 70 secondes (" + pickProvider() + "/" + (process.env.AI_MODEL || DEFAULT_MODELS[pickProvider()]) + ")");
-        if (i >= 1) throw lastErr; // une seule relance après un délai dépassé
-        continue;
+  for (const provider of providerChain()) {
+    const attempts = provider === pickProvider() ? 4 : 2;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const out = await callAIOnce(prompt, opts, provider);
+        if (provider !== pickProvider()) out.fallback = true;
+        return out;
+      } catch (e) {
+        lastErr = e;
+        if (e.name === "TimeoutError" || e.name === "AbortError") {
+          lastErr = new Error("IA trop lente : pas de réponse après 70 secondes (" + provider + ")");
+          break; // fournisseur trop lent : on passe au suivant
+        }
+        if (!isOverload(e)) break; // erreur non liée à la charge : on passe au suivant
+        await new Promise((r) => setTimeout(r, 3000 * (i + 1)));
       }
-      if (!/"code":\s*(429|500|503)|UNAVAILABLE|overloaded|rate/i.test(String(e.message))) throw e;
-      await new Promise((r) => setTimeout(r, 4000 * (i + 1)));
     }
   }
   throw lastErr;
