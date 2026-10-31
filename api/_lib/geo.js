@@ -138,7 +138,7 @@ export function scoreGeo(article, keyword = "", siteUrl = "") {
     tableau: /<table\b/i.test(html),
     paragraphes_max_200_mots: paras.length > 0 && Math.max(...paras) <= 200,
     faq_3_a_5: Array.isArray(article.faq) && article.faq.length >= 3 && article.faq.length <= 5,
-    donnees_chiffrees: (text.match(/\d+[\d\s.,]*\s?(%|€|euros?|ans|mois|jours)/gi) || []).length >= 2,
+    donnees_chiffrees: (text.match(/\d+[\d\s.,]*\s?(%|€|euros?|ans|mois|semaines?|jours|heures)/gi) || []).length >= 2,
     lien_interne: /<a\s[^>]*href=/i.test(html),
     lien_externe: (() => {
       let host = "";
@@ -273,8 +273,12 @@ ${en ? "Write ONLY section" : "Rédige UNIQUEMENT la section"} ${index + 1}/${to
 ${en ? "RULES" : "RÈGLES"}:
 - ${en ? "HTML only (no markdown, no backticks, no <html>/<body>). Start with <h2>" : "HTML uniquement (pas de markdown, pas de backticks, pas de <html>/<body>). Commence par <h2>"}${h2}</h2>
 - ${en ? `300 to 450 words. First sentence = direct answer to the H2 question${first ? ` and contains the exact phrase "${keyword}"` : ""}. Each paragraph self-contained, 100 to 150 words max (no \"as seen above\").` : `300 à 450 mots. Première phrase = réponse directe à la question du H2${first ? ` et contenant exactement l'expression « ${keyword} »` : ""}. Chaque paragraphe est autonome, 100 à 150 mots maximum (pas de « comme vu plus haut »).`}
-- ${en ? "Include a bulleted/numbered list or an HTML <table> if the topic fits." : "Inclus une liste à puces/numérotée ou un tableau HTML <table> si le sujet s'y prête."}
-- ${en ? `Use the exact phrase "${keyword}" ${first ? 5 : 4} times in this section (naturally spread, not stuffed; at least once in every ~100 words of text is NOT required, but 4 mentions are), plus close variants.` : `Utilise l'expression exacte « ${keyword} » ${first ? 5 : 4} fois dans cette section (répartie naturellement, sans bourrage ; compte-les avant de répondre), plus des variantes proches.`}
+- ${index === 1
+    ? (en ? "Include ONE HTML <table> comparing options or criteria (3 to 5 rows, <th> header cells, NO prices)." : "Inclus UN tableau HTML <table> qui compare des options ou des critères (3 à 5 lignes, cellules d'en-tête <th>, AUCUN prix).")
+    : index === 2
+      ? (en ? "Include ONE bulleted or numbered list (4 to 6 items)." : "Inclus UNE liste à puces ou numérotée (4 à 6 éléments).")
+      : (en ? "A short list is welcome if the topic fits." : "Une courte liste est bienvenue si le sujet s'y prête.")}
+- ${en ? `Use the exact phrase "${keyword}" ${first ? 6 : 5} times in this section (naturally spread, not stuffed; at least once in every ~100 words of text is NOT required, but 4 mentions are), plus close variants.` : `Utilise l'expression exacte « ${keyword} » ${first ? 6 : 5} fois dans cette section (répartie naturellement, sans bourrage ; compte-les avant de répondre), plus des variantes proches.`}
 ${(index === 1 || index === 3) && /https?:\/\//.test(realData) ? `- ${en ? 'Include ONE external link to a source from the REAL DATA below, written as <a href="URL" target="_blank" rel="noopener">source name</a> (never nofollow). Use ONLY URLs listed below; never invent a URL.' : 'Insère UN lien externe vers une source des DONNÉES RÉELLES ci-dessous, écrit <a href="URL" target="_blank" rel="noopener">nom de la source</a> (jamais nofollow). Utilise UNIQUEMENT les URL listées ci-dessous ; n\'invente jamais d\'URL.'}\n` : ""}
 - ${en ? "NEVER state any price, rate, budget or price range (no amounts in euros/dollars): if cost comes up, explain what makes it vary and suggest requesting a quote." : "N'indique JAMAIS de prix, tarif, budget ni fourchette de prix (aucun montant en euros) : si le coût est évoqué, explique ce qui le fait varier et invite à demander un devis."}
 - ${en ? "Use the keyword naturally. NEVER invent a figure, study, testimonial or source: use only the REAL DATA below, otherwise stay qualitative." : "Utilise le mot-clé naturellement. N'INVENTE JAMAIS un chiffre, une étude, un témoignage ou une source : utilise uniquement les DONNÉES RÉELLES ci-dessous, sinon reste qualitatif."}
