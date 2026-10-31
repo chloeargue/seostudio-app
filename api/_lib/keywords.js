@@ -99,7 +99,15 @@ Réponds UNIQUEMENT par son numéro.`;
   return { keyword: shortlist[0], how: "premier" };
 }
 
-// URL de l'article = mot-clé principal (sans accents, tirets), pour Rank Math
+// URL de l'article = mot-clé principal (sans accents, tirets), pour Rank Math.
+// Rank Math veut une adresse complète courte (< 75 caractères) : si le slug dépasse 30 caractères,
+// on retire les petits mots (pour, de, le...) comme le conseille le SEO.
+const STOP = new Set(["pour", "de", "du", "des", "le", "la", "les", "un", "une", "et", "en", "au", "aux", "a", "d", "l", "sur", "avec", "dans", "the", "for", "of", "and", "to", "in", "a", "an"]);
 export function slugFromKeyword(keyword) {
-  return norm(keyword).split(" ").filter(Boolean).join("-").slice(0, 70).replace(/-+$/, "");
+  let words = norm(keyword).split(" ").filter(Boolean);
+  if (words.join("-").length > 30) {
+    const kept = words.filter((w) => !STOP.has(w));
+    if (kept.length >= 2) words = kept;
+  }
+  return words.join("-").slice(0, 60).replace(/-+$/, "");
 }
